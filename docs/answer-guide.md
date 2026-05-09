@@ -1,8 +1,8 @@
-# 자동화와 운영 흐름 정답 가이드
+# 자동화와 운영 흐름 참고 구현 가이드
 
-## 정답 흐름 요약
+## 참고 구현 흐름 요약
 
-정답 기준에서는 아래 네 파일이 핵심입니다.
+참고 기준에서는 아래 네 파일이 핵심입니다.
 
 - `.github/workflows/ci.yml`
 - `.github/workflows/deploy.yml`
@@ -12,9 +12,9 @@
 이 네 파일이 함께 맞물려야
 build -> test -> deploy -> verify 흐름이 반복 가능하게 완성됩니다.
 
-## 1. CI 정답 포인트
+## 1. CI 참고 구현 포인트
 
-정답 기준의 `ci.yml`은 아래 감각이 보여야 합니다.
+참고 기준의 `ci.yml`은 아래 감각이 보여야 합니다.
 
 ```yaml
 - name: Run build and test
@@ -27,9 +27,9 @@ build -> test -> deploy -> verify 흐름이 반복 가능하게 완성됩니다.
 - 배포 전에 검증이 먼저 온다
 - 깨진 코드는 다음 단계로 넘기지 않는다
 
-## 2. deploy workflow 정답 포인트
+## 2. deploy workflow 참고 구현 포인트
 
-정답 기준의 `deploy.yml`은 아래 역할이 분리되어 보여야 합니다.
+참고 기준의 `deploy.yml`은 아래 역할이 분리되어 보여야 합니다.
 
 - build job
 - deploy job
@@ -52,9 +52,9 @@ jobs:
     needs: deploy
 ```
 
-## 3. deploy.sh 정답 포인트
+## 3. deploy.sh 참고 구현 포인트
 
-정답 기준의 `deploy.sh`는 아래 순서를 가져야 합니다.
+참고 기준의 `deploy.sh`는 아래 순서를 가져야 합니다.
 
 1. 기존 컨테이너 정리
 2. 새 이미지 빌드
@@ -71,9 +71,9 @@ docker compose --env-file .env -f deploy/compose.prod.yaml up -d
 여기서 먼저 봐야 할 것은
 "명령이 많다"가 아니라 "배포 순서가 분명하다"입니다.
 
-## 4. check-deploy.sh 정답 포인트
+## 4. check-deploy.sh 참고 구현 포인트
 
-정답 기준의 `check-deploy.sh`는 아래 세 가지를 함께 봐야 합니다.
+참고 기준의 `check-deploy.sh`는 아래 세 가지를 함께 봐야 합니다.
 
 1. 컨테이너 상태
 2. 애플리케이션 로그
@@ -92,7 +92,7 @@ curl --fail --silent http://localhost:8080/ >/dev/null
 
 ## 5. workflow와 script를 왜 나눴는가
 
-정답 기준에서는 아래 감각이 잡혀야 합니다.
+참고 기준에서는 아래 감각이 잡혀야 합니다.
 
 - workflow는 순서를 묶는다
 - script는 실제 서버 작업을 수행한다
@@ -110,7 +110,7 @@ curl --fail --silent http://localhost:8080/ >/dev/null
 
 ## 6. 실패 차단 지점은 어디에 있는가
 
-정답 기준에서 꼭 확인해야 할 질문은 이것입니다.
+참고 기준에서 꼭 확인해야 할 질문은 이것입니다.
 
 "어느 단계에서 실패하면 다음 단계로 넘어가면 안 되는가?"
 
@@ -123,7 +123,7 @@ curl --fail --silent http://localhost:8080/ >/dev/null
 즉, 자동화는 “끝까지 돈다”보다
 "잘못된 상태를 다음 단계로 넘기지 않는다"가 더 중요합니다.
 
-## 7. 강사가 빠르게 볼 체크 포인트
+## 7. 리뷰어가 빠르게 볼 체크 포인트
 
 - `ci.yml`이 build/test를 자동으로 실행하는가
 - `deploy.yml`이 build, deploy, verify job을 분리했는가
