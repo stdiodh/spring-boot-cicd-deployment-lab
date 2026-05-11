@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>A&I Backend Visual Lab</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <header class="lab-header">
+      <p id="sequenceLabel" class="eyebrow"></p>
+      <h1 id="labTitle"></h1>
+      <p id="labGoal" class="goal"></p>
+      <p id="branchLabel" class="branch-label"></p>
+    </header>
+
+    <section class="panel" aria-labelledby="conceptsTitle">
+      <div class="section-heading">
+        <p class="eyebrow">Concepts</p>
+        <h2 id="conceptsTitle">핵심 개념</h2>
+      </div>
+      <div id="conceptList" class="concept-grid"></div>
+    </section>
+
+    <section class="panel flow-panel" aria-labelledby="flowTitle">
+      <div class="section-heading">
+        <p class="eyebrow">Flow</p>
+        <h2 id="flowTitle">백엔드 흐름</h2>
+      </div>
+
+      <div id="flowSteps" class="flow-steps"></div>
+
+      <article class="step-detail" aria-live="polite">
+        <p id="stepMeta" class="step-meta"></p>
+        <h3 id="stepTitle"></h3>
+        <p id="stepDescription"></p>
+        <dl class="step-io">
+          <div>
+            <dt>Actor</dt>
+            <dd id="stepActor"></dd>
+          </div>
+          <div>
+            <dt>Target</dt>
+            <dd id="stepTarget"></dd>
+          </div>
+        </dl>
+        <p id="stepCheckpoint" class="checkpoint"></p>
+      </article>
+
+      <div class="step-controls">
+        <button id="prevStep" type="button">이전</button>
+        <span id="stepProgress"></span>
+        <button id="nextStep" type="button">다음</button>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="checkpointsTitle">
+      <div class="section-heading">
+        <p class="eyebrow">Checkpoints</p>
+        <h2 id="checkpointsTitle">확인할 것</h2>
+      </div>
+      <ul id="checkpointList" class="checkpoint-list"></ul>
+    </section>
+  </main>
+
+  <script src="./visual-lab-data.js"></script>
+  <script src="./visual-lab.js"></script>
+</body>
+</html>

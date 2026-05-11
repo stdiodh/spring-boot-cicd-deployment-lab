@@ -1,14 +1,7 @@
-# spring-boot-deployment-runtime-lab
+# Spring Boot Deployment Runtime Lab
 
-> Docker, EC2, GitHub Actions, Secrets를 이용한 배포와 실행 환경 실습 레포입니다.
-
-이 브랜치는 실습 starter가 아니라 안내용 `main` 브랜치입니다.  
-학생은 현재 진행할 시퀀스의 `NN-implementation`에서 시작하고, 강사는 같은 번호의 `NN-answer`를 비교 기준으로 사용합니다.
-
-## 이 레포가 다루는 시퀀스
-
-- `09-deployment-and-runtime-environment`
-- `10-cicd-and-operations-automation`
+이 레포는 A&I 백엔드 커리큘럼의 `09~10` 배포와 운영 자동화 시퀀스를 담는 토픽 레포입니다.
+`main`은 가이드 브랜치이고, 학생 실습은 오늘 시퀀스 번호에 맞는 `NN-implementation`에서 시작합니다.
 
 ## 이 레포에서 배우는 것
 
@@ -16,42 +9,98 @@
 - `application-prod.yaml`로 운영 설정 분리하기
 - GitHub Actions로 기본 배포 흐름 만들기
 - GitHub Secrets로 EC2 pem key, 계정, 시크릿 분리하기
-- 배포 후 로그로 기동 상태 확인하기
-- 환경변수 우선순위와 운영 설정 분리 감각 익히기
 - build, test, deploy, verify 자동화 흐름 분리하기
 - workflow와 배포 스크립트 역할 나누기
-- 실패 차단 지점과 배포 성공 판정 기준 이해하기
 
-## 브랜치 안내
+## 시작 방법
 
-- `09-implementation`: 학생용 starter 브랜치
-- `09-answer`: 완성 정답 브랜치
-- `10-implementation`: 학생용 starter 브랜치
-- `10-answer`: 완성 정답 브랜치
-- `main`: 레포 소개와 브랜치 안내 브랜치
+오늘 시퀀스 번호에 맞는 브랜치로 checkout합니다.
+예를 들어 시퀀스 09는 아래처럼 시작합니다.
+
+```bash
+git clone https://github.com/stdiodh/spring-boot-deployment-runtime-lab.git
+cd spring-boot-deployment-runtime-lab
+git checkout 09-implementation
+```
+
+## 실습 브랜치
+
+| 용도 | 브랜치 |
+| --- | --- |
+| 가이드 | `main` |
+| 학생 시작 | `09-implementation`, `10-implementation` |
+| 참고 정답 | `09-answer`, `10-answer` |
+
+## 실행 방법
+
+로컬 확인:
+
+```bash
+docker compose up -d
+./gradlew bootRun
+```
+
+배포 산출물 확인:
+
+```bash
+./gradlew bootJar
+```
+
+## 테스트 방법
+
+```bash
+./gradlew test
+```
+
+배포 전 검증:
+
+```bash
+./gradlew test bootJar
+```
+
+컨테이너 실행 확인:
+
+```bash
+docker build -t aandi-deployment-runtime-lab .
+docker compose up -d
+```
+
+테스트가 확인하는 것:
+
+- 09는 docker build, docker compose up, health check 또는 로그 확인을 다룹니다.
+- 10은 workflow 성공/실패 케이스와 배포 전 검증 명령을 다룹니다.
+
+실패하면 먼저 볼 것:
+
+- Gradle test 실패, bootJar 실패, Docker build 실패, compose 실행 실패를 분리해서 읽습니다.
+- GitHub Actions에서는 처음 실패한 step을 먼저 확인합니다.
+
+완료 기준:
+
+- 배포 전 검증 명령이 통과합니다.
+- 컨테이너 실행 상태 또는 workflow verify 기준을 설명할 수 있습니다.
+
+## 정답과 비교하는 방법
+
+실습 중 막혔거나 완료 후 확인이 필요할 때만 같은 번호의 참고 정답 브랜치와 비교합니다.
+예를 들어 시퀀스 10은 아래처럼 비교합니다.
+
+```bash
+git fetch origin
+git diff 10-implementation..10-answer
+```
+
+## Visual Lab
+
+현재 `main` 가이드 브랜치에는 Visual Lab 진입점이 없습니다.
+Visual Lab을 구현할 경우 이 레포의 아래 위치를 사용합니다.
+
+```text
+docs/visual-lab/index.html
+```
 
 ## 문서 안내
 
 - [레포 가이드](./docs/repo-guide.md)
 - [브랜치 가이드](./docs/branch-guide.md)
 - [시퀀스 맵](./docs/sequence-map.md)
-
-실습 문서는 각 시퀀스 브랜치에서 확인합니다.
-
-- `09-implementation`, `09-answer`
-- `10-implementation`, `10-answer`
-
-각 브랜치는 아래 문서 구조를 공통으로 가집니다.
-
-- `README.md`
-- `docs/theory.md`
-- `docs/implementation.md`
-- `docs/answer-guide.md`
-- `docs/checklist.md`
-- `docs/assets.md`
-
-## 시작 방법
-
-1. 학생: 현재 진행 중인 `NN-implementation`으로 이동
-2. 문서 순서: `README` → `docs/theory.md` → `docs/implementation.md`
-3. 구현 후 같은 번호의 `NN-answer`와 비교
