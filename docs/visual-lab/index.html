@@ -1,90 +1,15 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>A&I Backend Visual Lab</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>A&I Visual Lab</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <main class="app-shell">
-    <header class="lab-header">
-      <p id="sequenceLabel" class="eyebrow"></p>
-      <h1 id="labTitle"></h1>
-      <p id="labGoal" class="goal"></p>
-    </header>
-
-    <section class="panel" aria-labelledby="problemTitle">
-      <div class="section-heading">
-        <p class="eyebrow">Problem</p>
-        <h2 id="problemTitle">이 시퀀스가 해결하는 문제</h2>
-      </div>
-      <p id="problemText" class="problem-text"></p>
-    </section>
-
-    <section class="panel" aria-labelledby="conceptsTitle">
-      <div class="section-heading">
-        <p class="eyebrow">Concepts</p>
-        <h2 id="conceptsTitle">핵심 개념</h2>
-      </div>
-      <div id="conceptList" class="concept-grid"></div>
-    </section>
-
-    <section class="panel flow-panel" aria-labelledby="flowTitle">
-      <div class="section-heading">
-        <p class="eyebrow">Flow</p>
-        <h2 id="flowTitle">백엔드 흐름</h2>
-      </div>
-
-      <div id="flowSteps" class="flow-steps"></div>
-
-      <article class="step-detail" aria-live="polite">
-        <p id="stepMeta" class="step-meta"></p>
-        <h3 id="stepTitle"></h3>
-        <p id="stepDescription"></p>
-        <dl class="step-io">
-          <div>
-            <dt>Problem</dt>
-            <dd id="stepProblem"></dd>
-          </div>
-          <div>
-            <dt>Concept</dt>
-            <dd id="stepConcept"></dd>
-          </div>
-          <div>
-            <dt>Action</dt>
-            <dd id="stepAction"></dd>
-          </div>
-          <div>
-            <dt>Check</dt>
-            <dd id="stepCheck"></dd>
-          </div>
-        </dl>
-      </article>
-
-      <div class="step-controls">
-        <button id="prevStep" type="button">이전</button>
-        <span id="stepProgress"></span>
-        <button id="nextStep" type="button">다음</button>
-      </div>
-    </section>
-
-    <section class="panel" aria-labelledby="practiceTitle">
-      <div class="section-heading">
-        <p class="eyebrow">Practice Check</p>
-        <h2 id="practiceTitle">실습 중 확인할 것</h2>
-      </div>
-      <ul id="practiceList" class="checkpoint-list"></ul>
-    </section>
-
-    <section class="panel" aria-labelledby="mentorTitle">
-      <details class="mentor-details">
-        <summary id="mentorTitle">멘토용 진행 힌트</summary>
-        <ul id="mentorHintList" class="checkpoint-list"></ul>
-      </details>
-    </section>
-  </main>
-
+  <div id="app" class="app-shell">
+    <noscript>Visual Lab을 보려면 JavaScript를 활성화해주세요.</noscript>
+  </div>
   <script src="./visual-lab-data.js"></script>
   <script src="./visual-lab.js"></script>
 </body>
