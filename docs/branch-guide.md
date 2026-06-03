@@ -10,7 +10,7 @@
 
 - 강사와 학생이 비교할 정답 브랜치입니다.
 - 같은 시퀀스 문서 구조를 유지합니다.
-- 배포 흐름이 완성된 코드가 들어 있습니다.
+- 배포 흐름 비교 기준을 담습니다.
 
 ## `10-implementation`
 
@@ -20,7 +20,7 @@
 ## `10-answer`
 
 - 자동화 정답 브랜치입니다.
-- build, test, deploy, verify를 workflow와 script로 분리한 완성 코드가 들어 있습니다.
+- build, test, deploy, verify를 workflow와 script로 분리한 비교 기준을 담습니다.
 
 ## `main`
 

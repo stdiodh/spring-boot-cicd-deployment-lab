@@ -12,8 +12,15 @@
       <p id="sequenceLabel" class="eyebrow"></p>
       <h1 id="labTitle"></h1>
       <p id="labGoal" class="goal"></p>
-      <p id="branchLabel" class="branch-label"></p>
     </header>
+
+    <section class="panel" aria-labelledby="problemTitle">
+      <div class="section-heading">
+        <p class="eyebrow">Problem</p>
+        <h2 id="problemTitle">이 시퀀스가 해결하는 문제</h2>
+      </div>
+      <p id="problemText" class="problem-text"></p>
+    </section>
 
     <section class="panel" aria-labelledby="conceptsTitle">
       <div class="section-heading">
@@ -37,15 +44,22 @@
         <p id="stepDescription"></p>
         <dl class="step-io">
           <div>
-            <dt>Actor</dt>
-            <dd id="stepActor"></dd>
+            <dt>Problem</dt>
+            <dd id="stepProblem"></dd>
           </div>
           <div>
-            <dt>Target</dt>
-            <dd id="stepTarget"></dd>
+            <dt>Concept</dt>
+            <dd id="stepConcept"></dd>
+          </div>
+          <div>
+            <dt>Action</dt>
+            <dd id="stepAction"></dd>
+          </div>
+          <div>
+            <dt>Check</dt>
+            <dd id="stepCheck"></dd>
           </div>
         </dl>
-        <p id="stepCheckpoint" class="checkpoint"></p>
       </article>
 
       <div class="step-controls">
@@ -55,12 +69,19 @@
       </div>
     </section>
 
-    <section class="panel" aria-labelledby="checkpointsTitle">
+    <section class="panel" aria-labelledby="practiceTitle">
       <div class="section-heading">
-        <p class="eyebrow">Checkpoints</p>
-        <h2 id="checkpointsTitle">확인할 것</h2>
+        <p class="eyebrow">Practice Check</p>
+        <h2 id="practiceTitle">실습 중 확인할 것</h2>
       </div>
-      <ul id="checkpointList" class="checkpoint-list"></ul>
+      <ul id="practiceList" class="checkpoint-list"></ul>
+    </section>
+
+    <section class="panel" aria-labelledby="mentorTitle">
+      <details class="mentor-details">
+        <summary id="mentorTitle">멘토용 진행 힌트</summary>
+        <ul id="mentorHintList" class="checkpoint-list"></ul>
+      </details>
     </section>
   </main>
 
