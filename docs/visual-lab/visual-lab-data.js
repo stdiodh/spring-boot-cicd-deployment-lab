@@ -1,208 +1,48 @@
 window.visualLabData = {
-  sequence: "09-10",
-  title: "Deployment Runtime Visual Lab",
-  goal: "Spring Boot 실행 단위와 CI/CD 자동화 흐름을 시퀀스별로 탐색합니다.",
-  flow: [
-    {
-      id: "seq-09",
-      label: "09 Docker/Runtime",
-      problem: "로컬에서만 실행되는 애플리케이션은 운영 환경에서 같은 방식으로 재현되기 어렵습니다.",
-      concept: "bootJar, Docker image, container, profile, environment variable",
-      action: "jar를 이미지로 묶고 container runtime에서 설정과 로그를 확인합니다.",
-      check: "빌드 성공, 컨테이너 실행, 환경변수 주입, 로그 확인을 분리합니다.",
-    },
-    {
-      id: "seq-10",
-      label: "10 CI/CD Deployment",
-      problem: "사람이 같은 배포 명령을 반복하면 순서가 흔들리고 실패 차단 기준이 약해집니다.",
-      concept: "workflow, artifact, deploy script, verify",
-      action: "build, deploy, verify 단계를 자동화하고 실패하면 다음 단계로 넘어가지 않게 합니다.",
-      check: "어떤 단계가 실패하면 어디서 멈추는지 설명합니다.",
-    },
-  ],
-  defaultSequence: "09",
-  repo: {
-    name: "spring-boot-deployment-runtime-lab",
-    path: "spring-boot-deployment-runtime-lab",
+  "kind": "hub",
+  "sequence": "09-10",
+  "title": "Deployment Runtime Visual Lab",
+  "description": "Spring Boot 실행 단위와 CI/CD 자동화 흐름을 시퀀스별로 탐색합니다.",
+  "repo": {
+    "name": "spring-boot-deployment-runtime-lab",
+    "path": "spring-boot-deployment-runtime-lab"
   },
-  sequences: [
+  "visualLabPath": "docs/visual-lab/index.html",
+  "visualLabHubPath": "docs/visual-lab/index.html",
+  "flow": [
     {
-      id: "09",
-      title: "Docker/Runtime",
-      topic: "Deployment and runtime environment",
-      question: "내 로컬에서 되던 Spring Boot 앱을 운영 실행 단위로 어떻게 묶을까?",
-      goal: "bootJar, Dockerfile, image, container, prod profile, 환경변수, runtime log 흐름을 하나의 실행 단위로 이해합니다.",
-      source: {
-        theory: "../theory.md",
-        implementation: "../implementation.md",
-        checklist: "../checklist.md",
-      },
-      why: {
-        problem: "로컬에서 `bootRun`으로만 실행한 애플리케이션은 운영 서버에서 같은 조건으로 재현되기 어렵습니다.",
-        limits: [
-          "jar 경로, Java 실행 환경, profile, 환경변수가 사람마다 다르면 실행 결과도 달라집니다.",
-          "빌드 성공만 보고 컨테이너 상태와 로그를 보지 않으면 배포 성공을 착각할 수 있습니다.",
-          "CI/CD 전체 자동화를 먼저 붙이면 실행 단위 자체의 책임이 흐려집니다.",
-        ],
-        choice: "먼저 jar를 Docker image와 container 실행 단위로 묶고, prod profile과 환경변수 주입 흐름을 확인합니다.",
-      },
-      overview: [
-        "Source",
-        "bootJar",
-        "Dockerfile",
-        "Docker Image",
-        "Container",
-        "Env Config",
-        "Runtime Log",
-      ],
-      flows: [
-        {
-          id: "jar-to-container",
-          title: "jar에서 컨테이너 실행까지",
-          summary: "Spring Boot source가 bootJar 결과물이 되고 Dockerfile을 통해 image와 container 실행으로 이어집니다.",
-          mermaid: "sequenceDiagram\n  actor Developer\n  participant Gradle as Gradle bootJar\n  participant Dockerfile as Dockerfile\n  participant Image as Docker Image\n  participant Container as Container Runtime\n  Developer->>Gradle: test bootJar\n  Gradle-->>Dockerfile: application jar\n  Dockerfile->>Image: build image\n  Image->>Container: run container\n  Container-->>Developer: status and logs",
-          steps: [
-            { order: 1, actor: "Developer", input: "Source code", owner: "Gradle bootJar", action: "테스트와 jar 생성을 실행합니다.", output: "Application jar", note: "운영 실행 단위는 source가 아니라 빌드 산출물에서 시작합니다." },
-            { order: 2, actor: "Gradle", input: "Application jar", owner: "Dockerfile", action: "jar를 컨테이너 이미지 안으로 복사하고 Java 실행 명령을 고정합니다.", output: "Docker image layer", note: "실행 환경을 파일로 설명할 수 있게 됩니다." },
-            { order: 3, actor: "Docker", input: "Dockerfile", owner: "Docker Image", action: "재사용 가능한 image를 빌드합니다.", output: "Image tag", note: "image는 실행 준비가 끝난 패키지 단위입니다." },
-            { order: 4, actor: "Runtime", input: "Image tag", owner: "Container", action: "컨테이너를 실행하고 상태를 확인합니다.", output: "Running process", note: "build 성공과 runtime 성공은 분리해서 봐야 합니다." },
-          ],
-        },
-        {
-          id: "runtime-config",
-          title: "운영 설정 주입 흐름",
-          summary: "prod profile과 환경변수는 컨테이너 실행 시점에 애플리케이션 설정으로 전달됩니다.",
-          steps: [
-            { order: 1, actor: "Operator", input: "Environment variables", owner: "Compose runtime", action: "컨테이너 실행 시 필요한 값을 주입합니다.", output: "Runtime env", note: "민감한 값은 코드에 고정하지 않습니다." },
-            { order: 2, actor: "Compose runtime", input: "Runtime env", owner: "Spring profile", action: "prod profile 설정과 환경변수를 연결합니다.", output: "Application config", note: "로컬 설정과 운영 설정을 분리해서 읽습니다." },
-            { order: 3, actor: "Application", input: "Application config", owner: "Runtime log", action: "실행 결과와 오류를 로그로 확인합니다.", output: "Health evidence", note: "배포 명령 성공만으로 서비스가 살아 있다고 판단하지 않습니다." },
-          ],
-        },
-      ],
-      responsibilities: [
-        { name: "bootJar", role: "Spring Boot 애플리케이션을 실행 가능한 jar로 묶습니다.", caution: "테스트 실패와 jar 생성 실패를 분리해서 봅니다." },
-        { name: "Dockerfile", role: "jar를 어떤 실행 환경에서 어떻게 실행할지 파일로 고정합니다.", caution: "로컬 경로에 의존하면 운영 재현성이 떨어집니다." },
-        { name: "Compose config", role: "컨테이너 실행, profile, 환경변수 주입을 정리합니다.", caution: "secret 값을 코드에 직접 넣지 않습니다." },
-        { name: "Runtime log", role: "실행 후 애플리케이션 상태를 확인하는 근거입니다.", caution: "build 성공과 서비스 정상 실행을 같은 의미로 보지 않습니다." },
-      ],
-      concepts: [
-        { title: "실행 단위", body: "운영에서는 source가 아니라 빌드된 jar와 image, container가 실행 단위가 됩니다." },
-        { title: "Profile 분리", body: "로컬과 운영 설정을 나눠 같은 코드가 다른 환경에서 안전하게 실행되게 합니다." },
-        { title: "환경변수 주입", body: "민감하거나 환경마다 다른 값을 실행 시점에 전달합니다." },
-        { title: "로그 확인", body: "배포 명령이 끝난 뒤 실제 프로세스가 살아 있는지 확인하는 기준입니다." },
-      ],
-      glossary: [
-        { term: "bootJar", meaning: "Spring Boot 애플리케이션을 실행 가능한 jar로 만드는 Gradle 작업입니다.", caution: "서버가 정상 실행된다는 뜻까지 보장하지 않습니다." },
-        { term: "Dockerfile", meaning: "컨테이너 이미지를 만들기 위한 실행 환경 설명서입니다.", caution: "jar 경로와 실행 명령이 실제 산출물과 맞아야 합니다." },
-        { term: "Profile", meaning: "환경별 설정 묶음을 선택하는 기준입니다.", caution: "운영 profile에 필요한 값이 빠지면 runtime에서 실패할 수 있습니다." },
-        { term: "Environment Variable", meaning: "실행 시점에 애플리케이션으로 전달하는 설정 값입니다.", caution: "secret은 코드와 문서에 실제 값으로 남기지 않습니다." },
-        { term: "Runtime Log", meaning: "컨테이너 안 애플리케이션의 실제 실행 상태를 보여주는 기록입니다.", caution: "배포 성공 판정에는 로그와 상태 확인이 필요합니다." },
-      ],
-      practical: [
-        { title: "빌드 성공은 배포 성공이 아닙니다", body: "jar와 image가 만들어져도 환경변수나 runtime 오류로 애플리케이션은 죽을 수 있습니다." },
-        { title: "운영 설정은 실행 시점에 주입합니다", body: "코드에 박힌 설정은 환경 교체와 secret 관리에 취약합니다." },
-        { title: "자동화는 다음 단계입니다", body: "먼저 수동으로도 설명 가능한 실행 단위를 만들어야 workflow가 무엇을 자동화하는지 보입니다." },
-      ],
-      checks: [
-        "bootJar 결과물이 Dockerfile에서 어떤 경로로 복사되는지 설명할 수 있나요?",
-        "Docker image와 container의 차이를 말할 수 있나요?",
-        "prod profile과 환경변수가 실행 시점에 어떻게 들어가는지 설명할 수 있나요?",
-        "배포 명령은 성공했지만 앱이 죽어 있다면 어디를 먼저 봐야 하나요?",
-      ],
-      next: {
-        id: "10",
-        title: "CI/CD Deployment",
-        reason: "수동으로 실행 단위를 설명할 수 있다면, 다음에는 이 순서를 workflow와 script로 반복 가능하게 고정합니다.",
-      },
+      "id": "seq-09",
+      "label": "09 Docker/Runtime",
+      "problem": "로컬에서만 실행되는 애플리케이션은 운영 환경에서 같은 방식으로 재현되기 어렵습니다.",
+      "concept": "bootJar, Docker image, container, profile, environment variable",
+      "action": "jar를 이미지로 묶고 container runtime에서 설정과 로그를 확인합니다.",
+      "check": "빌드 성공, 컨테이너 실행, 환경변수 주입, 로그 확인을 분리합니다."
     },
     {
-      id: "10",
-      title: "CI/CD Deployment",
-      topic: "Automation and operations flow",
-      question: "한 번 성공한 배포 흐름을 어떻게 반복 가능하고 실패에 강하게 만들까?",
-      goal: "CI, artifact, deploy workflow, shell script, verify 단계를 나눠 자동화가 무엇을 지켜야 하는지 이해합니다.",
-      source: {
-        theory: "../theory.md",
-        implementation: "../implementation.md",
-        checklist: "../checklist.md",
-      },
-      why: {
-        problem: "사람이 매번 같은 배포 명령을 손으로 반복하면 순서가 흔들리고 실패 기준이 누락될 수 있습니다.",
-        limits: [
-          "build 실패 후 deploy가 이어지면 실패 원인이 더 커집니다.",
-          "deploy 명령만 자동화하고 verify를 빼면 서비스 정상 여부를 확인하지 못합니다.",
-          "workflow와 shell script 책임이 섞이면 유지보수와 재사용이 어려워집니다.",
-        ],
-        choice: "workflow는 단계 순서와 secret/artifact 전달을 맡고, script는 서버 안에서 반복 실행할 명령을 맡게 분리합니다.",
-      },
-      overview: [
-        "Push",
-        "GitHub Actions",
-        "Test",
-        "Build",
-        "Artifact",
-        "Deploy Script",
-        "Verify",
-      ],
-      flows: [
-        {
-          id: "build-deploy-verify",
-          title: "build -> deploy -> verify 흐름",
-          summary: "자동화의 핵심은 성공 경로뿐 아니라 실패하면 다음 단계로 넘어가지 않는 차단 경로입니다.",
-          mermaid: "sequenceDiagram\n  actor Developer\n  participant GitHub as GitHub Actions\n  participant CI as Build job\n  participant Deploy as Deploy job\n  participant Verify as Verify job\n  participant Server as Runtime server\n  Developer->>GitHub: push\n  GitHub->>CI: test and build\n  CI-->>GitHub: artifact\n  GitHub->>Deploy: transfer and run script\n  Deploy->>Server: restart application\n  GitHub->>Verify: health check\n  Verify-->>GitHub: success or failure",
-          steps: [
-            { order: 1, actor: "Developer", input: "Push event", owner: "GitHub Actions", action: "workflow를 시작합니다.", output: "CI job", note: "자동화는 변경 이벤트를 기준으로 같은 순서를 반복합니다." },
-            { order: 2, actor: "GitHub Actions", input: "Source code", owner: "CI job", action: "test와 build를 실행합니다.", output: "Artifact", note: "build가 실패하면 deploy는 실행되지 않아야 합니다." },
-            { order: 3, actor: "CI job", input: "Artifact", owner: "Deploy job", action: "서버로 산출물을 전달하고 deploy script를 실행합니다.", output: "Restarted service", note: "workflow는 원격 실행 순서를 조율합니다." },
-            { order: 4, actor: "Deploy job", input: "Running service", owner: "Verify job", action: "HTTP 응답이나 상태 확인으로 성공 여부를 판정합니다.", output: "Deployment result", note: "verify 실패는 배포 실패로 봐야 합니다." },
-          ],
-        },
-        {
-          id: "script-responsibility",
-          title: "script 책임 분리 흐름",
-          summary: "workflow가 모든 shell 명령을 품지 않고 deploy와 verify script가 반복 명령을 맡습니다.",
-          steps: [
-            { order: 1, actor: "Workflow", input: "Artifact and secrets", owner: "deploy script", action: "서버에서 필요한 파일 배치와 재시작 명령을 실행합니다.", output: "Runtime update", note: "반복 shell 명령은 script로 분리해야 리뷰와 재사용이 쉽습니다." },
-            { order: 2, actor: "Workflow", input: "Runtime endpoint", owner: "verify script", action: "배포 후 실제 응답을 확인합니다.", output: "Pass or fail", note: "배포 완료 기준은 명령 종료가 아니라 서비스 확인입니다." },
-            { order: 3, actor: "GitHub Actions", input: "Script result", owner: "Workflow status", action: "실패한 step을 기준으로 전체 결과를 실패 처리합니다.", output: "Action result", note: "처음 실패한 단계가 원인 분석의 출발점입니다." },
-          ],
-        },
-      ],
-      responsibilities: [
-        { name: "CI workflow", role: "build와 test 기준을 자동으로 확인합니다.", caution: "검증 없이 deploy로 넘어가지 않습니다." },
-        { name: "Artifact", role: "검증된 빌드 결과물을 다음 단계로 전달합니다.", caution: "source와 실행 산출물을 혼동하지 않습니다." },
-        { name: "Deploy script", role: "서버에서 반복할 배포 명령을 담습니다.", caution: "workflow 안에 긴 shell 흐름을 흩뿌리지 않습니다." },
-        { name: "Verify script", role: "배포 후 서비스가 실제로 응답하는지 확인합니다.", caution: "verify를 생략하면 실패한 배포를 성공으로 볼 수 있습니다." },
-      ],
-      concepts: [
-        { title: "CI는 먼저 멈추는 장치입니다", body: "빌드와 테스트가 실패하면 deploy 단계로 넘어가지 않게 합니다." },
-        { title: "CD는 검증된 산출물을 실행 환경으로 옮깁니다", body: "배포는 파일 전달과 실행 전환, 상태 확인까지 포함합니다." },
-        { title: "Verify는 완료 기준입니다", body: "서비스가 실제로 응답하는지 확인해야 배포 성공을 말할 수 있습니다." },
-        { title: "Secret은 workflow 입력입니다", body: "서버 접속 정보와 민감한 값은 코드가 아니라 안전한 저장소에서 주입합니다." },
-      ],
-      glossary: [
-        { term: "CI", meaning: "변경된 코드가 빌드되고 테스트되는지 자동으로 확인하는 흐름입니다.", caution: "실패 후 deploy가 이어지면 안 됩니다." },
-        { term: "CD", meaning: "검증된 결과물을 실행 환경으로 전달하고 배포하는 흐름입니다.", caution: "전달만으로 서비스 정상 여부가 보장되지는 않습니다." },
-        { term: "Artifact", meaning: "build job이 만든 배포 가능한 산출물입니다.", caution: "source code와 실행 파일을 구분해야 합니다." },
-        { term: "Verify", meaning: "배포 후 서비스 상태를 확인하는 단계입니다.", caution: "HTTP 응답 확인 실패는 배포 실패로 봐야 합니다." },
-        { term: "Secret", meaning: "workflow가 안전하게 주입받는 민감한 설정 값입니다.", caution: "로그나 저장소 파일에 실제 값을 남기지 않습니다." },
-      ],
-      practical: [
-        { title: "실패 차단이 자동화의 핵심입니다", body: "성공 경로를 빠르게 만드는 것보다 실패 후 다음 단계로 넘어가지 않는 것이 더 중요합니다." },
-        { title: "workflow와 script를 나눕니다", body: "workflow는 순서와 입력을, script는 서버에서 반복할 명령을 맡습니다." },
-        { title: "verify 없는 deploy는 완료가 아닙니다", body: "프로세스가 올라왔는지, HTTP 응답이 정상인지 확인해야 운영 흐름이 끝납니다." },
-      ],
-      checks: [
-        "build가 실패하면 deploy가 실행되지 않아야 하는 이유를 설명할 수 있나요?",
-        "artifact가 workflow 단계 사이에서 어떤 역할을 하는지 말할 수 있나요?",
-        "deploy script와 verify script 책임을 구분할 수 있나요?",
-        "deploy는 성공했지만 verify가 실패하면 workflow 결과는 무엇이어야 하나요?",
-      ],
-      next: {
-        id: "11",
-        title: "Refactoring Foundation",
-        reason: "자동화가 변경 후 동작을 확인해주기 시작하면, 다음에는 코드 구조를 작게 정리하며 테스트로 동작 보존을 확인합니다.",
-      },
-    },
+      "id": "seq-10",
+      "label": "10 CI/CD Deployment",
+      "problem": "사람이 같은 배포 명령을 반복하면 순서가 흔들리고 실패 차단 기준이 약해집니다.",
+      "concept": "workflow, artifact, deploy script, verify",
+      "action": "build, deploy, verify 단계를 자동화하고 실패하면 다음 단계로 넘어가지 않게 합니다.",
+      "check": "어떤 단계가 실패하면 어디서 멈추는지 설명합니다."
+    }
   ],
+  "sequences": [
+    {
+      "sequence": "09",
+      "id": "09",
+      "title": "Docker/Runtime",
+      "topic": "Deployment and runtime environment",
+      "href": "./sequences/09/index.html",
+      "summary": "내 로컬에서 되던 Spring Boot 앱을 운영 실행 단위로 어떻게 묶을까?"
+    },
+    {
+      "sequence": "10",
+      "id": "10",
+      "title": "CI/CD Deployment",
+      "topic": "Automation and operations flow",
+      "href": "./sequences/10/index.html",
+      "summary": "한 번 성공한 배포 흐름을 어떻게 반복 가능하고 실패에 강하게 만들까?"
+    }
+  ]
 };
