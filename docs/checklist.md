@@ -1,17 +1,27 @@
-# 배포와 실행 환경 체크리스트
+# Docker/Runtime과 CI/CD 체크리스트
 
-## 학생 체크리스트
+## 수업 전 확인
 
-- [ ] `Dockerfile`이 jar를 복사하고 실행하도록 완성했습니다.
-- [ ] `application-prod.yaml`에서 운영값을 환경변수로 분리했습니다.
-- [ ] `deploy/compose.prod.yaml`에서 앱, MySQL, Redis 연결을 확인했습니다.
-- [ ] `deploy.yml`에서 SSH 키와 운영 비밀값을 GitHub Secrets로 받게 만들었습니다.
-- [ ] 배포 후 `docker compose ps` 또는 `docker logs`로 기동 상태를 확인했습니다.
+- [ ] 오늘 시퀀스가 `09`인지 `10`인지 확인했습니다.
+- [ ] 해당 `NN-implementation` 브랜치에서 시작했습니다.
+- [ ] `./gradlew test bootJar`를 실행했습니다.
 
-## 강사 / PPT 체크리스트
+## 09 Docker/Runtime 확인
 
-- [ ] 로컬 실행과 운영 실행의 차이를 그림으로 설명할 수 있습니다.
-- [ ] jar → Dockerfile → EC2 → 로그 확인 흐름을 한 화면에서 보여줄 수 있습니다.
-- [ ] GitHub Secrets에 pem 키와 계정 정보를 왜 넣어야 하는지 설명할 수 있습니다.
-- [ ] `application.yaml`과 `application-prod.yaml` 차이를 시연할 수 있습니다.
-- [ ] 배포 성공 여부를 “로그 확인”으로 판단하는 장면을 포함했습니다.
+- [ ] `Dockerfile`이 jar를 `app.jar`로 복사합니다.
+- [ ] `ENTRYPOINT`가 `java -jar /app/app.jar`를 실행합니다.
+- [ ] `application-prod.yaml`이 운영 값을 환경변수로 받습니다.
+- [ ] `deploy/compose.prod.yaml`이 앱과 의존 서비스를 실행합니다.
+
+## 10 CI/CD 확인
+
+- [ ] `.github/workflows/deploy.yml`이 test, build, upload, deploy 순서를 가집니다.
+- [ ] 민감한 값은 GitHub Secrets에서 받습니다.
+- [ ] `scripts/deploy.sh`가 서버 배포 순서를 담당합니다.
+- [ ] `scripts/check-deploy.sh`가 compose 상태, 로그, HTTP 응답을 확인합니다.
+
+## 마무리 확인
+
+- [ ] 실패한 workflow step을 먼저 읽었습니다.
+- [ ] 컨테이너 로그로 기동 여부를 확인했습니다.
+- [ ] `NN-implementation..NN-answer` diff를 비교했습니다.

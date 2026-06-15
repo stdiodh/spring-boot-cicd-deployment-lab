@@ -5,10 +5,10 @@
 
 ## 이 레포에서 배우는 것
 
+- 로컬에서는 실행되던 앱이 서버에서 실패하는 문제를 찾는 방법
 - Spring Boot jar를 Docker 실행 단위로 묶기
 - `application-prod.yaml`로 운영 설정 분리하기
-- GitHub Actions로 기본 배포 흐름 만들기
-- GitHub Secrets로 EC2 pem key, 계정, 시크릿 분리하기
+- GitHub Actions와 Secrets로 배포 입력값을 분리하기
 - build, test, deploy, verify 자동화 흐름 분리하기
 - workflow와 배포 스크립트 역할 나누기
 

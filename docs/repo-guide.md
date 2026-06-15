@@ -19,7 +19,7 @@
 - GitHub Actions 기본 배포 흐름
 - EC2 접속용 시크릿 분리
 - CI 기본 흐름
-- deploy/verify 자동화
+- deploy와 verify 자동화
 
 ## 이 레포에서 깊게 다루지 않는 범위
 
