@@ -1163,6 +1163,24 @@ dt {
   padding: 14px;
 }
 
+.language-kotlin .kt-token-keyword {
+  color: var(--color-accent-blue);
+}
+
+.language-kotlin .kt-token-annotation,
+.language-kotlin .kt-token-type {
+  color: var(--color-accent-teal);
+}
+
+.language-kotlin .kt-token-string,
+.language-kotlin .kt-token-number {
+  color: var(--color-correct);
+}
+
+.language-kotlin .kt-token-comment {
+  color: #94a3b8;
+}
+
 .code-point-body {
   display: grid;
   gap: 8px;

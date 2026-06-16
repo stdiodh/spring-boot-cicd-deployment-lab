@@ -315,16 +315,81 @@
     return String(snippet || "").trim();
   }
 
+  function inferCodeLanguage(codePoint) {
+    const explicit = String(codePoint.language || "").trim().toLowerCase();
+    if (explicit) {
+      return explicit;
+    }
+
+    const file = String(codePoint.file || "").toLowerCase();
+    if (file.includes("src/main/kotlin") || file.includes("src/test/kotlin") || /\.kt\b/.test(file)) {
+      return "kotlin";
+    }
+
+    return "text";
+  }
+
+  const kotlinTokenPattern = /\/\*[\s\S]*?\*\/|\/\/[^\n]*|"""[\s\S]*?"""|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])'|@[A-Za-z_][A-Za-z0-9_.]*(?:\([^()\n]*\))?|\b(?:abstract|actual|annotation|as|break|by|catch|class|companion|const|constructor|continue|crossinline|data|do|dynamic|else|enum|expect|external|false|field|file|final|finally|for|fun|get|if|import|in|infix|init|inline|inner|interface|internal|is|lateinit|noinline|null|object|open|operator|out|override|package|param|private|property|protected|public|receiver|reified|return|sealed|set|setparam|suspend|tailrec|this|throw|true|try|typealias|typeof|val|var|vararg|when|where|while)\b|\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?[uUlLfF]*\b|\b[A-Z][A-Za-z0-9_]*\b/g;
+
+  function kotlinTokenClass(token) {
+    if (token.startsWith("//") || token.startsWith("/*")) {
+      return "kt-token-comment";
+    }
+    if (token.startsWith("\"") || token.startsWith("'")) {
+      return "kt-token-string";
+    }
+    if (token.startsWith("@")) {
+      return "kt-token-annotation";
+    }
+    if (/^\d/.test(token)) {
+      return "kt-token-number";
+    }
+    if (/^[A-Z]/.test(token)) {
+      return "kt-token-type";
+    }
+    return "kt-token-keyword";
+  }
+
+  function appendToken(parent, className, text) {
+    const token = createElement("span", className);
+    token.textContent = text;
+    parent.appendChild(token);
+  }
+
+  function appendKotlinHighlightedCode(parent, snippet) {
+    let cursor = 0;
+    kotlinTokenPattern.lastIndex = 0;
+
+    snippet.replace(kotlinTokenPattern, (match, offset) => {
+      if (offset > cursor) {
+        parent.appendChild(document.createTextNode(snippet.slice(cursor, offset)));
+      }
+      appendToken(parent, kotlinTokenClass(match), match);
+      cursor = offset + match.length;
+      return match;
+    });
+
+    if (cursor < snippet.length) {
+      parent.appendChild(document.createTextNode(snippet.slice(cursor)));
+    }
+  }
+
   function makeCodePointCard(codePoint, compact) {
     const card = createElement("figure", compact ? "code-point-card is-compact" : "code-point-card");
+    const language = inferCodeLanguage(codePoint);
     const header = createElement("figcaption", "");
     const title = createElement("strong", "", codePoint.title || "핵심 코드 포인트");
-    const meta = createElement("span", "", `${codePoint.file || "파일 경로 준비 중"} · ${codePoint.language || "text"}`);
+    const meta = createElement("span", "", `${codePoint.file || "파일 경로 준비 중"} · ${language}`);
     header.append(title, meta);
 
     const pre = createElement("pre", "code-box");
-    const code = createElement("code", "");
-    code.textContent = normalizeSnippet(codePoint.snippet) || "// 핵심 코드 조각을 준비 중입니다.";
+    const code = createElement("code", `language-${language}`);
+    const snippet = normalizeSnippet(codePoint.snippet) || "// 핵심 코드 조각을 준비 중입니다.";
+    if (language === "kotlin") {
+      appendKotlinHighlightedCode(code, snippet);
+    } else {
+      code.textContent = snippet;
+    }
     pre.appendChild(code);
 
     const body = createElement("div", "code-point-body");
