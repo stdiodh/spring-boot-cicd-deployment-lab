@@ -24,8 +24,8 @@
 ### 10에서 새로 보는 것
 
 - CI 기본 흐름
-- build / test / deploy / verify 분리
-- workflow와 shell script 역할 분리
+- test / build / upload / deploy / log 확인 순서
+- workflow step과 EC2 명령 실행 책임 구분
 
 ### 11으로 이어지는 것
 

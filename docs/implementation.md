@@ -11,7 +11,7 @@
 2. `Dockerfile`이 jar를 컨테이너 실행 단위로 묶습니다.
 3. `application-prod.yaml`이 운영 환경변수 자리를 정의합니다.
 4. `deploy/compose.prod.yaml`이 앱과 의존 서비스를 실행합니다.
-5. `.github/workflows/deploy.yml`이 build, upload, deploy, verify 흐름을 연결합니다.
+5. `.github/workflows/deploy.yml`이 test/build, release bundle 생성, upload, EC2 deploy, 로그 확인 흐름을 연결합니다.
 
 ## 3. 핵심 코드
 

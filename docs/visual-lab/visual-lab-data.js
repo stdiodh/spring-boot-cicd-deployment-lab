@@ -22,8 +22,8 @@ window.visualLabData = {
       "id": "seq-10",
       "label": "10 CI/CD Deployment",
       "problem": "사람이 같은 배포 명령을 반복하면 순서가 흔들리고 실패 차단 기준이 약해집니다.",
-      "concept": "workflow, artifact, deploy script, verify",
-      "action": "build, deploy, verify 단계를 자동화하고 실패하면 다음 단계로 넘어가지 않게 합니다.",
+      "concept": "workflow, artifact, release bundle, EC2 deploy",
+      "action": "test/build, bundle, upload, deploy 단계를 자동화하고 실패하면 다음 단계로 넘어가지 않게 합니다.",
       "check": "어떤 단계가 실패하면 어디서 멈추는지 설명합니다."
     }
   ],

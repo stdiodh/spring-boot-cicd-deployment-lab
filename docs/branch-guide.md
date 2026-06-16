@@ -15,12 +15,12 @@
 ## `10-implementation`
 
 - 학생이 자동화 흐름을 직접 채우는 브랜치입니다.
-- `ci.yml`, `deploy.yml`, `deploy.sh`, `check-deploy.sh`에 TODO가 들어 있습니다.
+- `.github/workflows/deploy.yml`의 test/build, bundle, upload, EC2 deploy step에 TODO가 들어 있습니다.
 
 ## `10-answer`
 
 - 자동화 정답 브랜치입니다.
-- build, test, deploy, verify를 workflow와 script로 분리한 비교 기준을 담습니다.
+- 단일 deploy workflow 안에서 test/build, bundle, upload, EC2 deploy, 로그 확인 순서를 연결한 비교 기준을 담습니다.
 
 ## `main`
 

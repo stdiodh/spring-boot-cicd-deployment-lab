@@ -16,14 +16,15 @@ Dockerfile은 그 jar를 컨테이너 안에서 같은 명령으로 실행하게
 `application-prod.yaml`은 어떤 환경변수가 필요한지 정의하고, 실제 값은 `.env`와 GitHub Secrets에서 주입합니다.
 
 CI/CD는 이 과정을 반복 가능한 순서로 묶습니다.
-build, test, deploy, verify가 분리되어야 어느 단계에서 실패했는지 읽을 수 있습니다.
+현재 workflow는 단일 `deploy` job 안에서 test/build, release bundle 생성, EC2 업로드, 서버 재기동, 로그 확인 step을 순서대로 실행합니다.
+단계가 별도 job으로 나뉘지 않아도 첫 실패 step을 읽을 수 있어야 합니다.
 
 ## 3. 선택한 방식
 
 이 레포는 두 시퀀스를 함께 다룹니다.
 
 - `09`: jar, Dockerfile, compose, profile로 런타임을 정리합니다.
-- `10`: workflow, secret, deploy script, verify 단계로 배포 자동화를 정리합니다.
+- `10`: workflow, secret, release bundle, EC2 deploy, 로그 확인으로 배포 자동화를 정리합니다.
 
 ## 4. 핵심 코드로 연결하기
 
@@ -33,11 +34,9 @@ build, test, deploy, verify가 분리되어야 어느 단계에서 실패했는�
 - `src/main/resources/application-prod.yaml`: 운영 DB, Redis, mail, OAuth2, JWT 값을 환경변수로 받습니다.
 - `.github/workflows/deploy.yml`: 테스트, jar 빌드, release bundle 생성, EC2 업로드, 컨테이너 재기동을 연결합니다.
 - `deploy/compose.prod.yaml`: EC2에서 앱과 의존 서비스를 띄우는 운영 compose 파일입니다.
-- `scripts/deploy.sh`: 서버에서 down, build, up 순서로 배포를 수행합니다.
-- `scripts/check-deploy.sh`: compose 상태, 로그, HTTP 응답으로 배포 결과를 확인합니다.
 
 왜 이 코드를 보는지 먼저 정리합니다.
-배포 실패는 jar 빌드, 이미지 생성, 환경변수, 컨테이너 기동, health 확인 중 어디서든 발생할 수 있습니다.
+배포 실패는 jar 빌드, release bundle 생성, 환경변수, 컨테이너 기동, 로그 확인 중 어디서든 발생할 수 있습니다.
 
 ```dockerfile
 ARG JAR_FILE=build/libs/*.jar
@@ -57,7 +56,7 @@ docker compose up -d
 ```
 
 CI/CD에서는 workflow의 첫 실패 step을 확인합니다.
-배포 뒤에는 `docker compose ps`, `docker logs --tail 50 aandi-app`, HTTP 확인으로 실제 기동 여부를 봅니다.
+배포 뒤에는 workflow의 `Deploy on EC2` step에서 `docker compose ps`와 `docker logs --tail 50 aandi-app` 출력으로 실제 기동 여부를 봅니다.
 
 ## 6. 한계와 다음 개선 방향
 

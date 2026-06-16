@@ -3,7 +3,7 @@ window.visualLabData = {
   "sequence": "10",
   "title": "CI/CD Deployment",
   "subtitle": "Automation and operations flow",
-  "goal": "CI, artifact, deploy workflow, shell script, verify 단계를 나눠 자동화가 무엇을 지켜야 하는지 이해합니다.",
+  "goal": "단일 deploy workflow 안에서 test/build, bundle, upload, EC2 deploy, 로그 확인 순서를 이해합니다.",
   "problem": "사람이 매번 같은 배포 명령을 손으로 반복하면 순서가 흔들리고 실패 기준이 누락될 수 있습니다.",
   "repo": {
     "name": "spring-boot-deployment-runtime-lab",
@@ -23,12 +23,12 @@ window.visualLabData = {
     },
     {
       "id": "build",
-      "label": "Build/Test Job",
+      "label": "Deploy Workflow",
       "kind": "ci"
     },
     {
       "id": "deploy",
-      "label": "Deploy Job",
+      "label": "Upload/Deploy Steps",
       "kind": "ci"
     },
     {
@@ -45,9 +45,9 @@ window.visualLabData = {
   "flows": [
     {
       "id": "build-deploy-verify",
-      "title": "build -> deploy -> verify 흐름",
+      "title": "test -> build -> upload -> deploy 흐름",
       "summary": "자동화의 핵심은 성공 경로뿐 아니라 실패하면 다음 단계로 넘어가지 않는 차단 경로입니다.",
-      "mermaid": "sequenceDiagram\n  actor Developer\n  participant GitHub as GitHub Actions\n  participant CI as Build job\n  participant Deploy as Deploy job\n  participant Verify as Verify job\n  participant Server as Runtime server\n  Developer->>GitHub: push\n  GitHub->>CI: test and build\n  CI-->>GitHub: artifact\n  GitHub->>Deploy: transfer and run script\n  Deploy->>Server: restart application\n  GitHub->>Verify: health check\n  Verify-->>GitHub: success or failure",
+      "mermaid": "sequenceDiagram\n  actor Developer\n  participant GitHub as GitHub Actions\n  participant Job as deploy job\n  participant Server as Runtime server\n  Developer->>GitHub: push or workflow_dispatch\n  GitHub->>Job: run tests and build jar\n  Job->>Job: prepare release bundle\n  Job->>Server: upload release bundle\n  Job->>Server: docker compose down/build/up\n  Server-->>Job: compose ps and app logs\n  Job-->>GitHub: success or failure",
       "steps": [
         {
           "order": 1,
@@ -55,7 +55,7 @@ window.visualLabData = {
           "input": "Push event",
           "owner": "GitHub Actions",
           "action": "workflow를 시작합니다.",
-          "output": "CI job",
+          "output": "Deploy workflow",
           "note": "자동화는 변경 이벤트를 기준으로 같은 순서를 반복합니다.",
           "id": "build-deploy-verify-step-1",
           "from": "Developer",
@@ -64,72 +64,72 @@ window.visualLabData = {
           "messageKind": "request",
           "problem": "Push event",
           "concept": "GitHub Actions",
-          "check": "CI job",
+          "check": "Deploy workflow",
           "codePointIds": [
             "workflow-stages",
-            "deploy-verify-scripts"
+            "inline-deploy-steps"
           ]
         },
         {
           "order": 2,
           "actor": "GitHub Actions",
           "input": "Source code",
-          "owner": "CI job",
+          "owner": "Deploy workflow",
           "action": "test와 build를 실행합니다.",
           "output": "Artifact",
           "note": "build가 실패하면 deploy는 실행되지 않아야 합니다.",
           "id": "build-deploy-verify-step-2",
           "from": "GitHub Actions",
-          "to": "CI job",
+          "to": "Deploy workflow",
           "message": "test와 build를 실행합니다.",
           "messageKind": "request",
           "problem": "Source code",
-          "concept": "CI job",
+          "concept": "Deploy workflow",
           "check": "Artifact",
           "codePointIds": [
-            "deploy-verify-scripts",
+            "inline-deploy-steps",
             "workflow-stages"
           ]
         },
         {
           "order": 3,
-          "actor": "CI job",
+          "actor": "Deploy workflow",
           "input": "Artifact",
-          "owner": "Deploy job",
-          "action": "서버로 산출물을 전달하고 deploy script를 실행합니다.",
+          "owner": "Upload and deploy steps",
+          "action": "release bundle을 서버로 업로드하고 EC2 배포 명령을 실행합니다.",
           "output": "Restarted service",
           "note": "workflow는 원격 실행 순서를 조율합니다.",
           "id": "build-deploy-verify-step-3",
-          "from": "CI job",
-          "to": "Deploy job",
-          "message": "서버로 산출물을 전달하고 deploy script를 실행합니다.",
+          "from": "Deploy workflow",
+          "to": "Upload and deploy steps",
+          "message": "release bundle을 서버로 업로드하고 EC2 배포 명령을 실행합니다.",
           "messageKind": "request",
           "problem": "Artifact",
-          "concept": "Deploy job",
+          "concept": "Upload and deploy steps",
           "check": "Restarted service",
           "codePointIds": [
             "workflow-stages",
-            "deploy-verify-scripts"
+            "inline-deploy-steps"
           ]
         },
         {
           "order": 4,
-          "actor": "Deploy job",
+          "actor": "Upload and deploy steps",
           "input": "Running service",
-          "owner": "Verify job",
-          "action": "HTTP 응답이나 상태 확인으로 성공 여부를 판정합니다.",
+          "owner": "Log check step",
+          "action": "compose 상태와 앱 로그로 배포 결과를 확인합니다.",
           "output": "Deployment result",
-          "note": "verify 실패는 배포 실패로 봐야 합니다.",
+          "note": "로그 확인 단계에서 이상이 보이면 배포 결과를 다시 확인해야 합니다.",
           "id": "build-deploy-verify-step-4",
-          "from": "Deploy job",
-          "to": "Verify job",
-          "message": "HTTP 응답이나 상태 확인으로 성공 여부를 판정합니다.",
+          "from": "Upload and deploy steps",
+          "to": "Log check step",
+          "message": "compose 상태와 앱 로그로 배포 결과를 확인합니다.",
           "messageKind": "response",
           "problem": "Running service",
-          "concept": "Verify job",
+          "concept": "Log check step",
           "check": "Deployment result",
           "codePointIds": [
-            "deploy-verify-scripts",
+            "inline-deploy-steps",
             "workflow-stages"
           ]
         }
@@ -137,75 +137,75 @@ window.visualLabData = {
       "bandKind": "scenario"
     },
     {
-      "id": "script-responsibility",
-      "title": "script 책임 분리 흐름",
-      "summary": "workflow가 모든 shell 명령을 품지 않고 deploy와 verify script가 반복 명령을 맡습니다.",
+      "id": "workflow-step-responsibility",
+      "title": "workflow step 책임 흐름",
+      "summary": "현재 기준은 별도 script 없이 workflow step이 빌드, 업로드, 서버 명령, 로그 확인을 순서대로 맡습니다.",
       "steps": [
         {
           "order": 1,
           "actor": "Workflow",
           "input": "Artifact and secrets",
-          "owner": "deploy script",
+          "owner": "Upload and deploy steps",
           "action": "서버에서 필요한 파일 배치와 재시작 명령을 실행합니다.",
           "output": "Runtime update",
-          "note": "반복 shell 명령은 script로 분리해야 리뷰와 재사용이 쉽습니다.",
-          "id": "script-responsibility-step-1",
+          "note": "현재 레포는 별도 script 파일 대신 workflow step 안에서 서버 명령을 실행합니다.",
+          "id": "workflow-step-responsibility-step-1",
           "from": "Workflow",
-          "to": "deploy script",
+          "to": "Upload and deploy steps",
           "message": "서버에서 필요한 파일 배치와 재시작 명령을 실행합니다.",
           "messageKind": "request",
           "problem": "Artifact and secrets",
-          "concept": "deploy script",
+          "concept": "Upload and deploy steps",
           "check": "Runtime update",
           "codePointIds": [
             "workflow-stages",
-            "deploy-verify-scripts"
+            "inline-deploy-steps"
           ]
         },
         {
           "order": 2,
           "actor": "Workflow",
           "input": "Runtime endpoint",
-          "owner": "verify script",
-          "action": "배포 후 실제 응답을 확인합니다.",
+          "owner": "Log check step",
+          "action": "배포 후 compose 상태와 앱 로그를 확인합니다.",
           "output": "Pass or fail",
           "note": "배포 완료 기준은 명령 종료가 아니라 서비스 확인입니다.",
-          "id": "script-responsibility-step-2",
+          "id": "workflow-step-responsibility-step-2",
           "from": "Workflow",
-          "to": "verify script",
-          "message": "배포 후 실제 응답을 확인합니다.",
+          "to": "Log check step",
+          "message": "배포 후 compose 상태와 앱 로그를 확인합니다.",
           "messageKind": "request",
           "problem": "Runtime endpoint",
-          "concept": "verify script",
+          "concept": "Log check step",
           "check": "Pass or fail",
           "codePointIds": [
-            "deploy-verify-scripts",
+            "inline-deploy-steps",
             "workflow-stages"
           ]
         },
         {
           "order": 3,
           "actor": "GitHub Actions",
-          "input": "Script result",
+          "input": "Step result",
           "owner": "Workflow status",
           "action": "실패한 step을 기준으로 전체 결과를 실패 처리합니다.",
           "output": "Action result",
           "note": "처음 실패한 단계가 원인 분석의 출발점입니다.",
-          "id": "script-responsibility-step-3",
+          "id": "workflow-step-responsibility-step-3",
           "from": "GitHub Actions",
           "to": "Workflow status",
           "message": "실패한 step을 기준으로 전체 결과를 실패 처리합니다.",
           "messageKind": "error",
-          "problem": "Script result",
+          "problem": "Step result",
           "concept": "Workflow status",
           "check": "Action result",
           "codePointIds": [
             "workflow-stages",
-            "deploy-verify-scripts"
+            "inline-deploy-steps"
           ]
         },
         {
-          "id": "script-responsibility-check-4",
+          "id": "workflow-step-responsibility-check-4",
           "order": 4,
           "actor": "Workflow status",
           "owner": "확인 지점",
@@ -219,7 +219,7 @@ window.visualLabData = {
           "check": "성공 흐름과 실패 흐름을 말로 설명합니다.",
           "note": "Visual Lab은 코드를 대신 완성하지 않고 확인 지점을 고정합니다.",
           "codePointIds": [
-            "deploy-verify-scripts"
+            "inline-deploy-steps"
           ]
         }
       ],
@@ -233,45 +233,45 @@ window.visualLabData = {
       "problem": "Push event",
       "concept": "GitHub Actions",
       "action": "workflow를 시작합니다.",
-      "check": "CI job",
+      "check": "Deploy workflow",
       "codePointIds": [
         "workflow-stages",
-        "deploy-verify-scripts"
+        "inline-deploy-steps"
       ]
     },
     {
       "id": "build-deploy-verify-step-2",
-      "label": "CI job",
+      "label": "Deploy workflow",
       "problem": "Source code",
-      "concept": "CI job",
+      "concept": "Deploy workflow",
       "action": "test와 build를 실행합니다.",
       "check": "Artifact",
       "codePointIds": [
-        "deploy-verify-scripts",
+        "inline-deploy-steps",
         "workflow-stages"
       ]
     },
     {
       "id": "build-deploy-verify-step-3",
-      "label": "Deploy job",
+      "label": "Upload and deploy steps",
       "problem": "Artifact",
-      "concept": "Deploy job",
-      "action": "서버로 산출물을 전달하고 deploy script를 실행합니다.",
+      "concept": "Upload and deploy steps",
+      "action": "release bundle을 서버로 업로드하고 EC2 배포 명령을 실행합니다.",
       "check": "Restarted service",
       "codePointIds": [
         "workflow-stages",
-        "deploy-verify-scripts"
+        "inline-deploy-steps"
       ]
     },
     {
       "id": "build-deploy-verify-step-4",
-      "label": "Verify job",
+      "label": "Log check step",
       "problem": "Running service",
-      "concept": "Verify job",
-      "action": "HTTP 응답이나 상태 확인으로 성공 여부를 판정합니다.",
+      "concept": "Log check step",
+      "action": "compose 상태와 앱 로그로 배포 결과를 확인합니다.",
       "check": "Deployment result",
       "codePointIds": [
-        "deploy-verify-scripts",
+        "inline-deploy-steps",
         "workflow-stages"
       ]
     }
@@ -279,21 +279,21 @@ window.visualLabData = {
   "codePoints": [
     {
       "id": "workflow-stages",
-      "title": "Workflow는 build, deploy, verify로 책임을 나눕니다",
+      "title": "Workflow는 단일 deploy job 안에서 순서를 고정합니다",
       "file": ".github/workflows/deploy.yml",
       "language": "yaml",
-      "snippet": "jobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - name: Run tests and build jar\n        run: ./gradlew test bootJar\n\n  deploy:\n    needs: build\n    runs-on: ubuntu-latest\n\n  verify:\n    needs: deploy\n    runs-on: ubuntu-latest",
-      "explanation": "테스트와 빌드가 통과해야 배포가 시작되고, 배포 뒤에는 검증 job이 따릅니다.",
-      "check": "실패한 job 이후 단계가 실행되지 않는지 확인합니다."
+      "snippet": "jobs:\n  deploy:\n    runs-on: ubuntu-latest\n    steps:\n      - name: Run tests and build jar\n        run: ./gradlew test bootJar\n      - name: Prepare release bundle\n      - name: Upload release bundle\n      - name: Deploy on EC2",
+      "explanation": "현재 workflow는 별도 build/deploy/verify job이 아니라 단일 deploy job의 step 순서로 실패 지점을 드러냅니다.",
+      "check": "실패한 step 이후 작업이 실행되지 않는지 확인합니다."
     },
     {
-      "id": "deploy-verify-scripts",
-      "title": "배포 script와 검증 script 책임을 분리합니다",
-      "file": "scripts/deploy.sh / scripts/check-deploy.sh",
-      "language": "bash",
-      "snippet": "docker compose --env-file .env -f deploy/compose.prod.yaml down || true\ndocker build -t \"$APP_IMAGE\" .\ndocker compose --env-file .env -f deploy/compose.prod.yaml up -d\n\ndocker compose --env-file .env -f deploy/compose.prod.yaml ps\ndocker logs --tail 50 aandi-app\ncurl --fail --silent http://localhost:8080/ >/dev/null",
-      "explanation": "배포 명령과 성공 판정 명령을 분리해야 실패 지점을 정확히 읽을 수 있습니다.",
-      "check": "deploy 성공만으로 끝내지 않고 verify가 HTTP 응답까지 확인하는지 봅니다."
+      "id": "inline-deploy-steps",
+      "title": "Deploy on EC2 step이 서버 명령과 로그 확인을 묶습니다",
+      "file": ".github/workflows/deploy.yml",
+      "language": "yaml",
+      "snippet": "- name: Deploy on EC2\n  run: |\n    docker compose -f deploy/compose.prod.yaml down || true\n    docker build -t ${APP_IMAGE} .\n    docker compose --env-file .env -f deploy/compose.prod.yaml up -d\n    docker compose --env-file .env -f deploy/compose.prod.yaml ps\n    docker logs --tail 50 aandi-app",
+      "explanation": "현재 레포는 별도 script 파일 없이 workflow step에서 EC2 명령과 로그 확인을 실행합니다.",
+      "check": "배포 실패 시 어떤 step 로그를 먼저 볼지 확인합니다."
     }
   ],
   "concepts": [
@@ -317,8 +317,8 @@ window.visualLabData = {
   "practice": [
     "build가 실패하면 deploy가 실행되지 않아야 하는 이유를 설명할 수 있나요?",
     "artifact가 workflow 단계 사이에서 어떤 역할을 하는지 말할 수 있나요?",
-    "deploy script와 verify script 책임을 구분할 수 있나요?",
-    "deploy는 성공했지만 verify가 실패하면 workflow 결과는 무엇이어야 하나요?"
+    "release bundle이 서버로 전달되는 이유를 설명할 수 있나요?",
+    "배포 후 compose 상태와 앱 로그를 확인해야 하는 이유를 말할 수 있나요?"
   ],
   "mentorHints": [],
   "relatedDocs": [],
@@ -329,20 +329,20 @@ window.visualLabData = {
       "title": "CI/CD Deployment",
       "topic": "Automation and operations flow",
       "question": "한 번 성공한 배포 흐름을 어떻게 반복 가능하고 실패에 강하게 만들까?",
-      "goal": "CI, artifact, deploy workflow, shell script, verify 단계를 나눠 자동화가 무엇을 지켜야 하는지 이해합니다.",
+      "goal": "단일 deploy workflow 안에서 test/build, bundle, upload, EC2 deploy, 로그 확인 순서를 이해합니다.",
       "source": {
-        "theory": "../theory.md",
-        "implementation": "../implementation.md",
-        "checklist": "../checklist.md"
+        "theory": "../../../theory.md",
+        "implementation": "../../../implementation.md",
+        "checklist": "../../../checklist.md"
       },
       "why": {
         "problem": "사람이 매번 같은 배포 명령을 손으로 반복하면 순서가 흔들리고 실패 기준이 누락될 수 있습니다.",
         "limits": [
           "build 실패 후 deploy가 이어지면 실패 원인이 더 커집니다.",
           "deploy 명령만 자동화하고 verify를 빼면 서비스 정상 여부를 확인하지 못합니다.",
-          "workflow와 shell script 책임이 섞이면 유지보수와 재사용이 어려워집니다."
+          "workflow step의 책임이 흐려지면 실패 지점을 읽기 어려워집니다."
         ],
-        "choice": "workflow는 단계 순서와 secret/artifact 전달을 맡고, script는 서버 안에서 반복 실행할 명령을 맡게 분리합니다."
+        "choice": "workflow는 test/build, bundle, upload, EC2 deploy, 로그 확인을 step 순서로 고정합니다."
       },
       "overview": [
         "Push",
@@ -350,15 +350,16 @@ window.visualLabData = {
         "Test",
         "Build",
         "Artifact",
-        "Deploy Script",
-        "Verify"
+        "Upload",
+        "EC2 Deploy",
+        "Log Check"
       ],
       "flows": [
         {
           "id": "build-deploy-verify",
-          "title": "build -> deploy -> verify 흐름",
+          "title": "test -> build -> upload -> deploy 흐름",
           "summary": "자동화의 핵심은 성공 경로뿐 아니라 실패하면 다음 단계로 넘어가지 않는 차단 경로입니다.",
-          "mermaid": "sequenceDiagram\n  actor Developer\n  participant GitHub as GitHub Actions\n  participant CI as Build job\n  participant Deploy as Deploy job\n  participant Verify as Verify job\n  participant Server as Runtime server\n  Developer->>GitHub: push\n  GitHub->>CI: test and build\n  CI-->>GitHub: artifact\n  GitHub->>Deploy: transfer and run script\n  Deploy->>Server: restart application\n  GitHub->>Verify: health check\n  Verify-->>GitHub: success or failure",
+          "mermaid": "sequenceDiagram\n  actor Developer\n  participant GitHub as GitHub Actions\n  participant Job as deploy job\n  participant Server as Runtime server\n  Developer->>GitHub: push or workflow_dispatch\n  GitHub->>Job: run tests and build jar\n  Job->>Job: prepare release bundle\n  Job->>Server: upload release bundle\n  Job->>Server: docker compose down/build/up\n  Server-->>Job: compose ps and app logs\n  Job-->>GitHub: success or failure",
           "steps": [
             {
               "order": 1,
@@ -366,7 +367,7 @@ window.visualLabData = {
               "input": "Push event",
               "owner": "GitHub Actions",
               "action": "workflow를 시작합니다.",
-              "output": "CI job",
+              "output": "Deploy workflow",
               "note": "자동화는 변경 이벤트를 기준으로 같은 순서를 반복합니다.",
               "id": "build-deploy-verify-step-1",
               "from": "Developer",
@@ -375,72 +376,72 @@ window.visualLabData = {
               "messageKind": "request",
               "problem": "Push event",
               "concept": "GitHub Actions",
-              "check": "CI job",
+              "check": "Deploy workflow",
               "codePointIds": [
                 "workflow-stages",
-                "deploy-verify-scripts"
+                "inline-deploy-steps"
               ]
             },
             {
               "order": 2,
               "actor": "GitHub Actions",
               "input": "Source code",
-              "owner": "CI job",
+              "owner": "Deploy workflow",
               "action": "test와 build를 실행합니다.",
               "output": "Artifact",
               "note": "build가 실패하면 deploy는 실행되지 않아야 합니다.",
               "id": "build-deploy-verify-step-2",
               "from": "GitHub Actions",
-              "to": "CI job",
+              "to": "Deploy workflow",
               "message": "test와 build를 실행합니다.",
               "messageKind": "request",
               "problem": "Source code",
-              "concept": "CI job",
+              "concept": "Deploy workflow",
               "check": "Artifact",
               "codePointIds": [
-                "deploy-verify-scripts",
+                "inline-deploy-steps",
                 "workflow-stages"
               ]
             },
             {
               "order": 3,
-              "actor": "CI job",
+              "actor": "Deploy workflow",
               "input": "Artifact",
-              "owner": "Deploy job",
-              "action": "서버로 산출물을 전달하고 deploy script를 실행합니다.",
+              "owner": "Upload and deploy steps",
+              "action": "release bundle을 서버로 업로드하고 EC2 배포 명령을 실행합니다.",
               "output": "Restarted service",
               "note": "workflow는 원격 실행 순서를 조율합니다.",
               "id": "build-deploy-verify-step-3",
-              "from": "CI job",
-              "to": "Deploy job",
-              "message": "서버로 산출물을 전달하고 deploy script를 실행합니다.",
+              "from": "Deploy workflow",
+              "to": "Upload and deploy steps",
+              "message": "release bundle을 서버로 업로드하고 EC2 배포 명령을 실행합니다.",
               "messageKind": "request",
               "problem": "Artifact",
-              "concept": "Deploy job",
+              "concept": "Upload and deploy steps",
               "check": "Restarted service",
               "codePointIds": [
                 "workflow-stages",
-                "deploy-verify-scripts"
+                "inline-deploy-steps"
               ]
             },
             {
               "order": 4,
-              "actor": "Deploy job",
+              "actor": "Upload and deploy steps",
               "input": "Running service",
-              "owner": "Verify job",
-              "action": "HTTP 응답이나 상태 확인으로 성공 여부를 판정합니다.",
+              "owner": "Log check step",
+              "action": "compose 상태와 앱 로그로 배포 결과를 확인합니다.",
               "output": "Deployment result",
               "note": "verify 실패는 배포 실패로 봐야 합니다.",
               "id": "build-deploy-verify-step-4",
-              "from": "Deploy job",
-              "to": "Verify job",
-              "message": "HTTP 응답이나 상태 확인으로 성공 여부를 판정합니다.",
+              "from": "Upload and deploy steps",
+              "to": "Log check step",
+              "message": "compose 상태와 앱 로그로 배포 결과를 확인합니다.",
               "messageKind": "response",
               "problem": "Running service",
-              "concept": "Verify job",
+              "concept": "Log check step",
               "check": "Deployment result",
               "codePointIds": [
-                "deploy-verify-scripts",
+                "inline-deploy-steps",
                 "workflow-stages"
               ]
             }
@@ -448,75 +449,75 @@ window.visualLabData = {
           "bandKind": "scenario"
         },
         {
-          "id": "script-responsibility",
-          "title": "script 책임 분리 흐름",
-          "summary": "workflow가 모든 shell 명령을 품지 않고 deploy와 verify script가 반복 명령을 맡습니다.",
+          "id": "workflow-step-responsibility",
+          "title": "workflow step 책임 흐름",
+          "summary": "현재 기준은 별도 script 없이 workflow step이 빌드, 업로드, 서버 명령, 로그 확인을 순서대로 맡습니다.",
           "steps": [
             {
               "order": 1,
               "actor": "Workflow",
               "input": "Artifact and secrets",
-              "owner": "deploy script",
+              "owner": "Upload and deploy steps",
               "action": "서버에서 필요한 파일 배치와 재시작 명령을 실행합니다.",
               "output": "Runtime update",
-              "note": "반복 shell 명령은 script로 분리해야 리뷰와 재사용이 쉽습니다.",
-              "id": "script-responsibility-step-1",
+              "note": "현재 레포는 별도 script 파일 대신 workflow step 안에서 서버 명령을 실행합니다.",
+              "id": "workflow-step-responsibility-step-1",
               "from": "Workflow",
-              "to": "deploy script",
+              "to": "Upload and deploy steps",
               "message": "서버에서 필요한 파일 배치와 재시작 명령을 실행합니다.",
               "messageKind": "request",
               "problem": "Artifact and secrets",
-              "concept": "deploy script",
+              "concept": "Upload and deploy steps",
               "check": "Runtime update",
               "codePointIds": [
                 "workflow-stages",
-                "deploy-verify-scripts"
+                "inline-deploy-steps"
               ]
             },
             {
               "order": 2,
               "actor": "Workflow",
               "input": "Runtime endpoint",
-              "owner": "verify script",
-              "action": "배포 후 실제 응답을 확인합니다.",
+              "owner": "Log check step",
+              "action": "배포 후 compose 상태와 앱 로그를 확인합니다.",
               "output": "Pass or fail",
               "note": "배포 완료 기준은 명령 종료가 아니라 서비스 확인입니다.",
-              "id": "script-responsibility-step-2",
+              "id": "workflow-step-responsibility-step-2",
               "from": "Workflow",
-              "to": "verify script",
-              "message": "배포 후 실제 응답을 확인합니다.",
+              "to": "Log check step",
+              "message": "배포 후 compose 상태와 앱 로그를 확인합니다.",
               "messageKind": "request",
               "problem": "Runtime endpoint",
-              "concept": "verify script",
+              "concept": "Log check step",
               "check": "Pass or fail",
               "codePointIds": [
-                "deploy-verify-scripts",
+                "inline-deploy-steps",
                 "workflow-stages"
               ]
             },
             {
               "order": 3,
               "actor": "GitHub Actions",
-              "input": "Script result",
+              "input": "Step result",
               "owner": "Workflow status",
               "action": "실패한 step을 기준으로 전체 결과를 실패 처리합니다.",
               "output": "Action result",
               "note": "처음 실패한 단계가 원인 분석의 출발점입니다.",
-              "id": "script-responsibility-step-3",
+              "id": "workflow-step-responsibility-step-3",
               "from": "GitHub Actions",
               "to": "Workflow status",
               "message": "실패한 step을 기준으로 전체 결과를 실패 처리합니다.",
               "messageKind": "error",
-              "problem": "Script result",
+              "problem": "Step result",
               "concept": "Workflow status",
               "check": "Action result",
               "codePointIds": [
                 "workflow-stages",
-                "deploy-verify-scripts"
+                "inline-deploy-steps"
               ]
             },
             {
-              "id": "script-responsibility-check-4",
+              "id": "workflow-step-responsibility-check-4",
               "order": 4,
               "actor": "Workflow status",
               "owner": "확인 지점",
@@ -530,7 +531,7 @@ window.visualLabData = {
               "check": "성공 흐름과 실패 흐름을 말로 설명합니다.",
               "note": "Visual Lab은 코드를 대신 완성하지 않고 확인 지점을 고정합니다.",
               "codePointIds": [
-                "deploy-verify-scripts"
+                "inline-deploy-steps"
               ]
             }
           ],
@@ -549,14 +550,14 @@ window.visualLabData = {
           "caution": "source와 실행 산출물을 혼동하지 않습니다."
         },
         {
-          "name": "Deploy script",
-          "role": "서버에서 반복할 배포 명령을 담습니다.",
-          "caution": "workflow 안에 긴 shell 흐름을 흩뿌리지 않습니다."
+          "name": "Upload/Deploy steps",
+          "role": "release bundle 업로드와 EC2 배포 명령을 실행합니다.",
+          "caution": "업로드와 재기동 순서를 바꾸지 않습니다."
         },
         {
-          "name": "Verify script",
-          "role": "배포 후 서비스가 실제로 응답하는지 확인합니다.",
-          "caution": "verify를 생략하면 실패한 배포를 성공으로 볼 수 있습니다."
+          "name": "Log check step",
+          "role": "배포 후 compose 상태와 앱 로그를 확인합니다.",
+          "caution": "로그 확인을 생략하면 실패한 배포를 놓칠 수 있습니다."
         }
       ],
       "concepts": [
@@ -595,8 +596,8 @@ window.visualLabData = {
         },
         {
           "term": "Verify",
-          "meaning": "배포 후 서비스 상태를 확인하는 단계입니다.",
-          "caution": "HTTP 응답 확인 실패는 배포 실패로 봐야 합니다."
+          "meaning": "배포 후 서비스 상태와 로그를 확인하는 단계입니다.",
+          "caution": "컨테이너 상태와 로그를 함께 봅니다."
         },
         {
           "term": "Secret",
@@ -610,19 +611,19 @@ window.visualLabData = {
           "body": "성공 경로를 빠르게 만드는 것보다 실패 후 다음 단계로 넘어가지 않는 것이 더 중요합니다."
         },
         {
-          "title": "workflow와 script를 나눕니다",
-          "body": "workflow는 순서와 입력을, script는 서버에서 반복할 명령을 맡습니다."
+          "title": "workflow step 순서를 고정합니다",
+          "body": "현재 기준은 별도 script 없이 workflow step 안에서 서버 명령과 로그 확인을 실행합니다."
         },
         {
           "title": "verify 없는 deploy는 완료가 아닙니다",
-          "body": "프로세스가 올라왔는지, HTTP 응답이 정상인지 확인해야 운영 흐름이 끝납니다."
+          "body": "프로세스가 올라왔는지, compose 상태와 앱 로그가 정상인지 확인해야 운영 흐름이 끝납니다."
         }
       ],
       "checks": [
         "build가 실패하면 deploy가 실행되지 않아야 하는 이유를 설명할 수 있나요?",
         "artifact가 workflow 단계 사이에서 어떤 역할을 하는지 말할 수 있나요?",
-        "deploy script와 verify script 책임을 구분할 수 있나요?",
-        "deploy는 성공했지만 verify가 실패하면 workflow 결과는 무엇이어야 하나요?"
+        "release bundle이 서버로 전달되는 이유를 설명할 수 있나요?",
+        "배포 후 compose 상태와 앱 로그를 확인해야 하는 이유를 말할 수 있나요?"
       ],
       "next": {
         "id": "11",
@@ -643,12 +644,12 @@ window.visualLabData = {
         },
         {
           "id": "build",
-          "label": "Build/Test Job",
+          "label": "Deploy Workflow",
           "kind": "ci"
         },
         {
           "id": "deploy",
-          "label": "Deploy Job",
+          "label": "Upload/Deploy Steps",
           "kind": "ci"
         },
         {
@@ -665,21 +666,21 @@ window.visualLabData = {
       "codePoints": [
         {
           "id": "workflow-stages",
-          "title": "Workflow는 build, deploy, verify로 책임을 나눕니다",
+          "title": "Workflow는 단일 deploy job 안에서 순서를 고정합니다",
           "file": ".github/workflows/deploy.yml",
           "language": "yaml",
-          "snippet": "jobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - name: Run tests and build jar\n        run: ./gradlew test bootJar\n\n  deploy:\n    needs: build\n    runs-on: ubuntu-latest\n\n  verify:\n    needs: deploy\n    runs-on: ubuntu-latest",
-          "explanation": "테스트와 빌드가 통과해야 배포가 시작되고, 배포 뒤에는 검증 job이 따릅니다.",
-          "check": "실패한 job 이후 단계가 실행되지 않는지 확인합니다."
+          "snippet": "jobs:\n  deploy:\n    runs-on: ubuntu-latest\n    steps:\n      - name: Run tests and build jar\n        run: ./gradlew test bootJar\n      - name: Prepare release bundle\n      - name: Upload release bundle\n      - name: Deploy on EC2",
+          "explanation": "현재 workflow는 별도 build/deploy/verify job이 아니라 단일 deploy job의 step 순서로 실패 지점을 드러냅니다.",
+          "check": "실패한 step 이후 작업이 실행되지 않는지 확인합니다."
         },
         {
-          "id": "deploy-verify-scripts",
-          "title": "배포 script와 검증 script 책임을 분리합니다",
-          "file": "scripts/deploy.sh / scripts/check-deploy.sh",
-          "language": "bash",
-          "snippet": "docker compose --env-file .env -f deploy/compose.prod.yaml down || true\ndocker build -t \"$APP_IMAGE\" .\ndocker compose --env-file .env -f deploy/compose.prod.yaml up -d\n\ndocker compose --env-file .env -f deploy/compose.prod.yaml ps\ndocker logs --tail 50 aandi-app\ncurl --fail --silent http://localhost:8080/ >/dev/null",
-          "explanation": "배포 명령과 성공 판정 명령을 분리해야 실패 지점을 정확히 읽을 수 있습니다.",
-          "check": "deploy 성공만으로 끝내지 않고 verify가 HTTP 응답까지 확인하는지 봅니다."
+          "id": "inline-deploy-steps",
+          "title": "Deploy on EC2 step이 서버 명령과 로그 확인을 묶습니다",
+          "file": ".github/workflows/deploy.yml",
+          "language": "yaml",
+          "snippet": "- name: Deploy on EC2\n  run: |\n    docker compose -f deploy/compose.prod.yaml down || true\n    docker build -t ${APP_IMAGE} .\n    docker compose --env-file .env -f deploy/compose.prod.yaml up -d\n    docker compose --env-file .env -f deploy/compose.prod.yaml ps\n    docker logs --tail 50 aandi-app",
+          "explanation": "현재 레포는 별도 script 파일 없이 workflow step에서 EC2 명령과 로그 확인을 실행합니다.",
+          "check": "배포 실패 시 어떤 step 로그를 먼저 볼지 확인합니다."
         }
       ],
       "problem": "사람이 매번 같은 배포 명령을 손으로 반복하면 순서가 흔들리고 실패 기준이 누락될 수 있습니다."

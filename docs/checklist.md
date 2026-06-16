@@ -17,8 +17,8 @@
 
 - [ ] `.github/workflows/deploy.yml`이 test, build, upload, deploy 순서를 가집니다.
 - [ ] 민감한 값은 GitHub Secrets에서 받습니다.
-- [ ] `scripts/deploy.sh`가 서버 배포 순서를 담당합니다.
-- [ ] `scripts/check-deploy.sh`가 compose 상태, 로그, HTTP 응답을 확인합니다.
+- [ ] release bundle에 jar, `Dockerfile`, `.env.example`, `deploy` 디렉터리가 포함됩니다.
+- [ ] `Deploy on EC2` step이 compose 재기동, 상태 출력, 로그 확인을 수행합니다.
 
 ## 마무리 확인
 
