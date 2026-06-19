@@ -22,7 +22,7 @@
   --color-incorrect: #2f62f4;
   --color-incorrect-bg: #eef4ff;
   --color-primary: var(--color-body-navy);
-  --color-primary-container: #1e293b;
+  --color-primary-container: var(--color-body-navy);
   --color-secondary: var(--color-accent-blue);
   --color-secondary-container: var(--color-panel-blue-tint);
   --color-neutral: var(--color-bg-base);
@@ -32,19 +32,19 @@
   --color-border-subtle: var(--color-outline-soft);
   --color-text: var(--color-body-navy);
   --color-muted: var(--color-subtext);
-  --color-code-bg: #020617;
-  --color-code-text: #e2e8f0;
+  --color-code-bg: #111b3f;
+  --color-code-text: #e8eef9;
   --diagram-bg: var(--color-body-navy);
-  --diagram-panel: #1f2328;
+  --diagram-panel: var(--color-body-navy);
   --diagram-scenario: var(--color-accent-teal);
-  --diagram-case: #e84d55;
-  --diagram-participant: #f39222;
+  --diagram-case: var(--color-accent-blue);
+  --diagram-participant: var(--color-accent-teal);
   --diagram-external: var(--color-accent-blue);
   --color-teal: var(--color-accent-teal);
   --color-teal-soft: var(--color-panel-mint-tint);
-  --color-amber: #b45309;
-  --color-amber-soft: #fef3c7;
-  --focus-ring: #f59e0b;
+  --color-amber: var(--color-accent-teal);
+  --color-amber-soft: var(--color-panel-mint-tint);
+  --focus-ring: var(--color-accent-blue);
   --shadow-soft: 0 10px 28px rgba(15, 23, 42, 0.07);
   --radius-card: 24px;
   --page-gutter: clamp(20px, 4vw, 64px);
@@ -93,7 +93,7 @@ body::before {
   height: 270px;
   background:
     repeating-linear-gradient(135deg, transparent 0 10px, rgba(37, 99, 235, 0.18) 10px 12px),
-    #e0edff;
+    var(--color-decor-blue);
 }
 
 body::after {
@@ -554,7 +554,7 @@ dt {
 
 .actor-diagram h3 {
   margin: 0;
-  color: #f8fafc;
+  color: #f8f9fb;
   font-size: 1.15rem;
 }
 
@@ -610,7 +610,7 @@ dt {
   border: 1px solid rgba(243, 146, 34, 0.75);
   border-radius: 18px;
   background: rgba(243, 146, 34, 0.12);
-  color: #fff7ed;
+  color: #e8eef9;
   padding: 8px 10px;
   text-align: center;
 }
@@ -962,7 +962,7 @@ dt {
 .step-detail,
 .step-stage {
   padding: 18px;
-  background: #fbfdff;
+  background: #ffffff;
 }
 
 .view-label {
@@ -1146,7 +1146,7 @@ dt {
 }
 
 .code-point-card figcaption span {
-  color: #94a3b8;
+  color: #c9d6f3;
   font-size: 0.76rem;
   font-weight: 850;
 }
@@ -1178,7 +1178,7 @@ dt {
 }
 
 .language-kotlin .kt-token-comment {
-  color: #94a3b8;
+  color: #c9d6f3;
 }
 
 .code-point-body {
