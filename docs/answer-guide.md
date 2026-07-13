@@ -35,7 +35,6 @@
 `scripts/deploy.sh`는 서버에서 실제 재배포를 수행합니다.
 
 ```bash
-docker compose --env-file .env -f deploy/compose.prod.yaml down || true
 docker build -t "$APP_IMAGE" .
 docker compose --env-file .env -f deploy/compose.prod.yaml up -d
 ```

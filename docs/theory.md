@@ -68,7 +68,7 @@ sequenceDiagram
     participant VerifyScript as scripts/check-deploy.sh
 
     Workflow->>DeployScript: bash scripts/deploy.sh RELEASE_DIR
-    DeployScript->>Compose: down old containers
+    DeployScript->>Compose: keep dependencies running
     DeployScript->>Compose: docker build
     DeployScript->>Compose: up -d
     Workflow->>VerifyScript: bash scripts/check-deploy.sh RELEASE_DIR
@@ -145,7 +145,7 @@ flowchart TD
 
 비교 포인트:
 
-- `deploy.sh`는 기존 컨테이너 정리, image build, compose up만 담당하나요?
+- `deploy.sh`는 전체 compose를 내리지 않고 image build와 compose up을 담당하나요?
 - `check-deploy.sh`는 compose ps, logs, HTTP 응답 확인을 담당하나요?
 - 두 script 모두 `set -euo pipefail`로 실패를 숨기지 않나요?
 

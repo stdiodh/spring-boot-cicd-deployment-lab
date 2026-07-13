@@ -56,7 +56,7 @@ workflow는 사람이 기억하던 순서를 파일로 고정합니다. build가
 
 ### 해야 할 일
 
-`scripts/deploy.sh`에서 서버가 기존 컨테이너를 정리하고, 새 image를 빌드하고, compose로 다시 띄우는 흐름을 확인합니다.
+`scripts/deploy.sh`에서 DB와 Redis를 내리지 않고 새 image를 빌드한 뒤 compose로 앱을 갱신하는 흐름을 확인합니다.
 
 ### 왜 이 작업을 하는가
 
@@ -105,6 +105,7 @@ build, deploy, verify 중 하나가 실패하면 다음 단계로 넘어가지 �
 - build, deploy, verify job의 책임이 분리되어 있습니다.
 - deploy script와 verify script의 책임이 섞이지 않았습니다.
 - secret 값은 GitHub Secrets 참조로만 사용합니다.
+- 운영 WebSocket Origin은 `PROD_WEBSOCKET_ALLOWED_ORIGIN_PATTERNS`로 실제 프런트 Origin만 허용합니다.
 
 <details>
 <summary>멘토용 진행 포인트</summary>
