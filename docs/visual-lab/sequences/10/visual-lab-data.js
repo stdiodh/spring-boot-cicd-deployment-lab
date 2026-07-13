@@ -3,7 +3,7 @@ window.visualLabData = {
   "sequence": "10",
   "title": "CI/CD Deployment",
   "subtitle": "Automation and operations flow",
-  "goal": "단일 deploy workflow 안에서 test/build, bundle, upload, EC2 deploy, 로그 확인 순서를 이해합니다.",
+  "goal": "build, deploy, verify job과 artifact 전달, 배포/검증 스크립트의 책임을 이해합니다.",
   "problem": "사람이 매번 같은 배포 명령을 손으로 반복하면 순서가 흔들리고 실패 기준이 누락될 수 있습니다.",
   "repo": {
     "name": "spring-boot-deployment-runtime-lab",
@@ -47,7 +47,7 @@ window.visualLabData = {
       "id": "build-deploy-verify",
       "title": "test -> build -> upload -> deploy 흐름",
       "summary": "자동화의 핵심은 성공 경로뿐 아니라 실패하면 다음 단계로 넘어가지 않는 차단 경로입니다.",
-      "mermaid": "sequenceDiagram\n  actor Developer\n  participant GitHub as GitHub Actions\n  participant Job as deploy job\n  participant Server as Runtime server\n  Developer->>GitHub: push or workflow_dispatch\n  GitHub->>Job: run tests and build jar\n  Job->>Job: prepare release bundle\n  Job->>Server: upload release bundle\n  Job->>Server: docker compose down/build/up\n  Server-->>Job: compose ps and app logs\n  Job-->>GitHub: success or failure",
+      "mermaid": "sequenceDiagram\n  actor Developer\n  participant Build as build job\n  participant Deploy as deploy job\n  participant Verify as verify job\n  participant Server as Runtime server\n  Developer->>Build: push or workflow_dispatch\n  Build->>Build: test, bootJar, artifact upload\n  Build->>Deploy: release artifact\n  Deploy->>Server: deploy.sh\n  Deploy->>Verify: needs deploy\n  Verify->>Server: check-deploy.sh\n  Server-->>Verify: compose, log, HTTP result",
       "steps": [
         {
           "order": 1,
@@ -279,11 +279,11 @@ window.visualLabData = {
   "codePoints": [
     {
       "id": "workflow-stages",
-      "title": "Workflow는 단일 deploy job 안에서 순서를 고정합니다",
+      "title": "Workflow는 build, deploy, verify 책임을 분리합니다",
       "file": ".github/workflows/deploy.yml",
       "language": "yaml",
-      "snippet": "jobs:\n  deploy:\n    runs-on: ubuntu-latest\n    steps:\n      - name: Run tests and build jar\n        run: ./gradlew test bootJar\n      - name: Prepare release bundle\n      - name: Upload release bundle\n      - name: Deploy on EC2",
-      "explanation": "현재 workflow는 별도 build/deploy/verify job이 아니라 단일 deploy job의 step 순서로 실패 지점을 드러냅니다.",
+      "snippet": "jobs:\n  build:\n    steps:\n      - run: ./gradlew test bootJar\n      - uses: actions/upload-artifact@v4\n  deploy:\n    needs: build\n    steps:\n      - uses: actions/download-artifact@v4\n      - run: bash scripts/deploy.sh\n  verify:\n    needs: deploy\n    steps:\n      - run: bash scripts/check-deploy.sh",
+      "explanation": "`10-answer`는 build 산출물을 artifact로 넘기고 deploy와 verify를 `needs`로 연결해 실패 경계를 분리합니다.",
       "check": "실패한 step 이후 작업이 실행되지 않는지 확인합니다."
     },
     {
@@ -291,7 +291,7 @@ window.visualLabData = {
       "title": "Deploy on EC2 step이 서버 명령과 로그 확인을 묶습니다",
       "file": ".github/workflows/deploy.yml",
       "language": "yaml",
-      "snippet": "- name: Deploy on EC2\n  run: |\n    docker compose -f deploy/compose.prod.yaml down || true\n    docker build -t ${APP_IMAGE} .\n    docker compose --env-file .env -f deploy/compose.prod.yaml up -d\n    docker compose --env-file .env -f deploy/compose.prod.yaml ps\n    docker logs --tail 50 aandi-app",
+      "snippet": "- name: Deploy on EC2\n  run: APP_IMAGE=${APP_IMAGE} bash scripts/deploy.sh ${RELEASE_DIR}\n\n- name: Verify deployment on EC2\n  run: bash scripts/check-deploy.sh ${RELEASE_DIR}",
       "explanation": "현재 레포는 별도 script 파일 없이 workflow step에서 EC2 명령과 로그 확인을 실행합니다.",
       "check": "배포 실패 시 어떤 step 로그를 먼저 볼지 확인합니다."
     }
@@ -329,7 +329,7 @@ window.visualLabData = {
       "title": "CI/CD Deployment",
       "topic": "Automation and operations flow",
       "question": "한 번 성공한 배포 흐름을 어떻게 반복 가능하고 실패에 강하게 만들까?",
-      "goal": "단일 deploy workflow 안에서 test/build, bundle, upload, EC2 deploy, 로그 확인 순서를 이해합니다.",
+      "goal": "build, deploy, verify job과 artifact 전달, 배포/검증 스크립트의 책임을 이해합니다.",
       "source": {
         "theory": "../../../theory.md",
         "implementation": "../../../implementation.md",
@@ -359,7 +359,7 @@ window.visualLabData = {
           "id": "build-deploy-verify",
           "title": "test -> build -> upload -> deploy 흐름",
           "summary": "자동화의 핵심은 성공 경로뿐 아니라 실패하면 다음 단계로 넘어가지 않는 차단 경로입니다.",
-          "mermaid": "sequenceDiagram\n  actor Developer\n  participant GitHub as GitHub Actions\n  participant Job as deploy job\n  participant Server as Runtime server\n  Developer->>GitHub: push or workflow_dispatch\n  GitHub->>Job: run tests and build jar\n  Job->>Job: prepare release bundle\n  Job->>Server: upload release bundle\n  Job->>Server: docker compose down/build/up\n  Server-->>Job: compose ps and app logs\n  Job-->>GitHub: success or failure",
+          "mermaid": "sequenceDiagram\n  actor Developer\n  participant Build as build job\n  participant Deploy as deploy job\n  participant Verify as verify job\n  participant Server as Runtime server\n  Developer->>Build: push or workflow_dispatch\n  Build->>Build: test, bootJar, artifact upload\n  Build->>Deploy: release artifact\n  Deploy->>Server: deploy.sh\n  Deploy->>Verify: needs deploy\n  Verify->>Server: check-deploy.sh\n  Server-->>Verify: compose, log, HTTP result",
           "steps": [
             {
               "order": 1,
@@ -666,11 +666,11 @@ window.visualLabData = {
       "codePoints": [
         {
           "id": "workflow-stages",
-          "title": "Workflow는 단일 deploy job 안에서 순서를 고정합니다",
+          "title": "Workflow는 build, deploy, verify 책임을 분리합니다",
           "file": ".github/workflows/deploy.yml",
           "language": "yaml",
-          "snippet": "jobs:\n  deploy:\n    runs-on: ubuntu-latest\n    steps:\n      - name: Run tests and build jar\n        run: ./gradlew test bootJar\n      - name: Prepare release bundle\n      - name: Upload release bundle\n      - name: Deploy on EC2",
-          "explanation": "현재 workflow는 별도 build/deploy/verify job이 아니라 단일 deploy job의 step 순서로 실패 지점을 드러냅니다.",
+          "snippet": "jobs:\n  build:\n    steps:\n      - run: ./gradlew test bootJar\n      - uses: actions/upload-artifact@v4\n  deploy:\n    needs: build\n    steps:\n      - uses: actions/download-artifact@v4\n      - run: bash scripts/deploy.sh\n  verify:\n    needs: deploy\n    steps:\n      - run: bash scripts/check-deploy.sh",
+          "explanation": "`10-answer`는 build 산출물을 artifact로 넘기고 deploy와 verify를 `needs`로 연결해 실패 경계를 분리합니다.",
           "check": "실패한 step 이후 작업이 실행되지 않는지 확인합니다."
         },
         {
@@ -678,7 +678,7 @@ window.visualLabData = {
           "title": "Deploy on EC2 step이 서버 명령과 로그 확인을 묶습니다",
           "file": ".github/workflows/deploy.yml",
           "language": "yaml",
-          "snippet": "- name: Deploy on EC2\n  run: |\n    docker compose -f deploy/compose.prod.yaml down || true\n    docker build -t ${APP_IMAGE} .\n    docker compose --env-file .env -f deploy/compose.prod.yaml up -d\n    docker compose --env-file .env -f deploy/compose.prod.yaml ps\n    docker logs --tail 50 aandi-app",
+          "snippet": "- name: Deploy on EC2\n  run: APP_IMAGE=${APP_IMAGE} bash scripts/deploy.sh ${RELEASE_DIR}\n\n- name: Verify deployment on EC2\n  run: bash scripts/check-deploy.sh ${RELEASE_DIR}",
           "explanation": "현재 레포는 별도 script 파일 없이 workflow step에서 EC2 명령과 로그 확인을 실행합니다.",
           "check": "배포 실패 시 어떤 step 로그를 먼저 볼지 확인합니다."
         }

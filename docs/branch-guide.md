@@ -20,7 +20,7 @@
 ## `10-answer`
 
 - 자동화 정답 브랜치입니다.
-- 단일 deploy workflow 안에서 test/build, bundle, upload, EC2 deploy, 로그 확인 순서를 연결한 비교 기준을 담습니다.
+- `10-answer`는 build, deploy, verify job과 artifact, 배포/검증 스크립트를 분리한 비교 기준을 담습니다.
 
 ## `main`
 
