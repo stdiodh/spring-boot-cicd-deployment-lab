@@ -283,7 +283,7 @@ window.visualLabData = {
       "file": ".github/workflows/deploy.yml",
       "language": "yaml",
       "snippet": "jobs:\n  build:\n    steps:\n      - run: ./gradlew test bootJar\n      - uses: actions/upload-artifact@v4\n  deploy:\n    needs: build\n    steps:\n      - uses: actions/download-artifact@v4\n      - run: bash scripts/deploy.sh\n  verify:\n    needs: deploy\n    steps:\n      - run: bash scripts/check-deploy.sh",
-      "explanation": "`10-answer`는 build 산출물을 artifact로 넘기고 deploy와 verify를 `needs`로 연결해 실패 경계를 분리합니다.",
+      "explanation": "완성 workflow는 build 산출물을 artifact로 넘기고 deploy와 verify를 `needs`로 연결해 실패 경계를 분리합니다.",
       "check": "실패한 step 이후 작업이 실행되지 않는지 확인합니다."
     },
     {
@@ -670,7 +670,7 @@ window.visualLabData = {
           "file": ".github/workflows/deploy.yml",
           "language": "yaml",
           "snippet": "jobs:\n  build:\n    steps:\n      - run: ./gradlew test bootJar\n      - uses: actions/upload-artifact@v4\n  deploy:\n    needs: build\n    steps:\n      - uses: actions/download-artifact@v4\n      - run: bash scripts/deploy.sh\n  verify:\n    needs: deploy\n    steps:\n      - run: bash scripts/check-deploy.sh",
-          "explanation": "`10-answer`는 build 산출물을 artifact로 넘기고 deploy와 verify를 `needs`로 연결해 실패 경계를 분리합니다.",
+          "explanation": "완성 workflow는 build 산출물을 artifact로 넘기고 deploy와 verify를 `needs`로 연결해 실패 경계를 분리합니다.",
           "check": "실패한 step 이후 작업이 실행되지 않는지 확인합니다."
         },
         {
