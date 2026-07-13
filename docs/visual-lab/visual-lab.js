@@ -121,19 +121,18 @@
     if (data.kind === "sequence") {
       return [
         {
+          ...data,
           id: data.sequence || "NN",
           title: data.title || "Visual Lab",
           question: data.problem || data.goal || "이 시퀀스의 흐름을 어떻게 설명할 수 있을까요?",
           goal: data.goal || "핵심 흐름을 단계별로 확인합니다.",
-          why: {
-            problem: data.problem,
-          },
+          why: data.why || { problem: data.problem },
           overview: data.overview || [],
           actors: data.actors || [],
           flows: data.flows || [],
           codePoints: data.codePoints || [],
           concepts: data.concepts || [],
-          checks: data.practice || data.checks || [],
+          checks: data.checks || data.practice || [],
           next: data.next || {},
         },
       ];

@@ -111,7 +111,6 @@ services:
 - name: Deploy on EC2
   run: |
     ssh -i ~/.ssh/aandi-ec2.pem "${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}" <<EOF
-      docker compose -f deploy/compose.prod.yaml down || true
       docker build -t aandi-deployment-runtime-lab:latest .
       docker compose --env-file .env -f deploy/compose.prod.yaml up -d
       docker logs --tail 50 aandi-app
@@ -120,7 +119,7 @@ services:
 
 핵심은 아래 순서입니다.
 
-1. 기존 컨테이너 정리
+1. DB와 Redis 컨테이너 유지
 2. 새 이미지 빌드
 3. 새 컨테이너 기동
 4. 로그 확인
@@ -145,6 +144,7 @@ services:
 - `PROD_GOOGLE_CLIENT_SECRET`
 - `PROD_FRONTEND_URL`
 - `PROD_PASSWORD_RESET_URL`
+- `PROD_WEBSOCKET_ALLOWED_ORIGIN_PATTERNS`
 - `PROD_MYSQL_DATABASE`
 - `PROD_MYSQL_ROOT_PASSWORD`
 
