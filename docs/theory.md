@@ -233,7 +233,7 @@ flowchart TD
 
 ## 9. 다음 구현으로 연결되는 지점
 
-`docs/answer-guide.md`를 볼 때는 YAML 문법보다 job 의존성, artifact 전달, deploy/verify script 책임 분리를 먼저 확인합니다. 다음 리팩토링 시퀀스에서는 자동화가 지켜주는 build/test 기준을 바탕으로 코드 구조를 더 읽기 좋게 다룹니다.
+`docs/implementation.md`와 `docs/checklist.md`를 볼 때는 YAML 문법보다 job 의존성, artifact 전달, deploy/verify script 책임 분리를 먼저 확인합니다. 다음 리팩토링 시퀀스에서는 자동화가 지켜주는 build/test 기준을 바탕으로 코드 구조를 더 읽기 좋게 다룹니다.
 
 <details>
 <summary>멘토용 설명 포인트</summary>
