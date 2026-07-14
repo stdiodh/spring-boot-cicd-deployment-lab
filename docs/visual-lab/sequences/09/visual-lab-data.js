@@ -321,9 +321,9 @@ window.visualLabData = {
   "topic": "Deployment and runtime environment",
   "question": "내 로컬에서 되던 Spring Boot 앱을 운영 실행 단위로 어떻게 묶을까?",
   "source": {
-    "theory": "../theory.md",
-    "implementation": "../implementation.md",
-    "checklist": "../checklist.md"
+    "theory": "../../../theory.md",
+    "implementation": "../../../implementation.md",
+    "checklist": "../../../checklist.md"
   },
   "why": {
     "problem": "로컬에서 `bootRun`으로만 실행한 애플리케이션은 운영 서버에서 같은 조건으로 재현되기 어렵습니다.",
