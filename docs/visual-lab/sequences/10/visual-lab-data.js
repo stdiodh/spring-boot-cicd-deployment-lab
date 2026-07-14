@@ -138,24 +138,24 @@ window.visualLabData = {
     },
     {
       "id": "workflow-step-responsibility",
-      "title": "workflow step 책임 흐름",
-      "summary": "현재 기준은 별도 script 없이 workflow step이 빌드, 업로드, 서버 명령, 로그 확인을 순서대로 맡습니다.",
+      "title": "배포와 검증 script 책임 흐름",
+      "summary": "이번 시퀀스는 workflow가 순서를 조율하고 deploy.sh와 check-deploy.sh가 서버 작업을 나눠 맡습니다.",
       "steps": [
         {
           "order": 1,
           "actor": "Workflow",
           "input": "Artifact and secrets",
-          "owner": "Upload and deploy steps",
-          "action": "서버에서 필요한 파일 배치와 재시작 명령을 실행합니다.",
+          "owner": "deploy.sh",
+          "action": "release 파일을 배치하고 애플리케이션 컨테이너를 갱신합니다.",
           "output": "Runtime update",
-          "note": "현재 레포는 별도 script 파일 대신 workflow step 안에서 서버 명령을 실행합니다.",
+          "note": "workflow는 원격 실행을 조율하고 서버 재기동 책임은 deploy.sh에 둡니다.",
           "id": "workflow-step-responsibility-step-1",
           "from": "Workflow",
-          "to": "Upload and deploy steps",
-          "message": "서버에서 필요한 파일 배치와 재시작 명령을 실행합니다.",
+          "to": "deploy.sh",
+          "message": "release 파일을 배치하고 애플리케이션 컨테이너를 갱신합니다.",
           "messageKind": "request",
           "problem": "Artifact and secrets",
-          "concept": "Upload and deploy steps",
+          "concept": "deploy.sh",
           "check": "Runtime update",
           "codePointIds": [
             "workflow-stages",
@@ -166,17 +166,17 @@ window.visualLabData = {
           "order": 2,
           "actor": "Workflow",
           "input": "Runtime endpoint",
-          "owner": "Log check step",
-          "action": "배포 후 compose 상태와 앱 로그를 확인합니다.",
+          "owner": "check-deploy.sh",
+          "action": "배포 후 compose 상태, 앱 로그, HTTP 응답을 확인합니다.",
           "output": "Pass or fail",
           "note": "배포 완료 기준은 명령 종료가 아니라 서비스 확인입니다.",
           "id": "workflow-step-responsibility-step-2",
           "from": "Workflow",
-          "to": "Log check step",
-          "message": "배포 후 compose 상태와 앱 로그를 확인합니다.",
+          "to": "check-deploy.sh",
+          "message": "배포 후 compose 상태, 앱 로그, HTTP 응답을 확인합니다.",
           "messageKind": "request",
           "problem": "Runtime endpoint",
-          "concept": "Log check step",
+          "concept": "check-deploy.sh",
           "check": "Pass or fail",
           "codePointIds": [
             "inline-deploy-steps",
@@ -292,7 +292,7 @@ window.visualLabData = {
       "file": ".github/workflows/deploy.yml",
       "language": "yaml",
       "snippet": "- name: Deploy on EC2\n  run: APP_IMAGE=${APP_IMAGE} bash scripts/deploy.sh ${RELEASE_DIR}\n\n- name: Verify deployment on EC2\n  run: bash scripts/check-deploy.sh ${RELEASE_DIR}",
-      "explanation": "workflow는 배포와 검증 script를 호출하고, 배포 script는 DB와 Redis를 내리지 않은 채 image를 갱신합니다.",
+      "explanation": "완성 workflow는 배포와 검증 script를 호출하고, 배포 script는 DB와 Redis를 내리지 않은 채 image를 갱신합니다.",
       "check": "배포 실패 시 어떤 step 로그를 먼저 볼지 확인합니다."
     }
   ],
@@ -404,8 +404,8 @@ window.visualLabData = {
       "body": "성공 경로를 빠르게 만드는 것보다 실패 후 다음 단계로 넘어가지 않는 것이 더 중요합니다."
     },
     {
-      "title": "workflow step 순서를 고정합니다",
-      "body": "현재 기준은 별도 script 없이 workflow step 안에서 서버 명령과 로그 확인을 실행합니다."
+      "title": "workflow와 script 책임을 분리합니다",
+      "body": "workflow는 job 순서를 조율하고 deploy.sh와 check-deploy.sh는 서버 갱신과 검증을 각각 맡습니다."
     },
     {
       "title": "verify 없는 deploy는 완료가 아닙니다",
