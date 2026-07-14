@@ -33,6 +33,8 @@ git checkout 09-implementation
 
 ## 실행 방법
 
+starter는 기존 애플리케이션, 로컬 compose, Docker/운영 profile/workflow의 기본 구조와 `.env.example`을 제공합니다. 학생은 오늘 시퀀스의 TODO와 검증 흐름에 집중하며 EC2 생성, 네트워크, 도메인/SSL, Kubernetes는 범위에서 제외합니다.
+
 로컬 확인:
 
 ```bash
@@ -101,7 +103,7 @@ docs/visual-lab/index.html
 
 ## 문서 안내
 
-- [레포 가이드](./docs/repo-guide.md)
-- [브랜치 가이드](./docs/branch-guide.md)
-- [시퀀스 맵](./docs/sequence-map.md)
+- [이론 정리](./docs/theory.md)
+- [구현 안내](./docs/implementation.md)
+- [체크리스트](./docs/checklist.md)
 - [Visual Lab](./docs/visual-lab/index.html)
