@@ -3,16 +3,16 @@ window.visualLabData = {
   "sequence": "10",
   "title": "CI/CD Deployment",
   "subtitle": "Automation and operations flow",
-  "goal": "build, deploy, verify job과 artifact 전달, 배포/검증 스크립트의 책임을 이해합니다.",
+  "goal": "실습 시작 상태의 build, deploy, verify 뼈대와 TODO를 읽고 artifact 전달, 배포, 검증 책임의 목표 경계를 이해합니다.",
   "problem": "사람이 매번 같은 배포 명령을 손으로 반복하면 순서가 흔들리고 실패 기준이 누락될 수 있습니다.",
   "workbench": {
     "kind": "pipeline",
-    "title": "Pipeline Gate",
-    "instruction": "실패 지점을 선택해 이후 job이 차단되는지와 배포 성공을 판정할 증거를 확인하세요.",
+    "title": "배포가 통과하거나 멈추는 과정",
+    "instruction": "현재 TODO와 원격 heredoc blocker를 먼저 구분하고, 이를 고친 뒤 각 실패가 다음 job을 차단하는 목표 흐름을 확인하세요.",
     "visual": {
       "src": "../../assets/diagrams/10-pipeline-gates.svg",
-      "alt": "build가 artifact를 만들고 deploy가 서버를 갱신한 뒤 verify가 compose 상태와 로그를 출력하고 HTTP 응답 성공을 확인하는 세 개의 파이프라인 게이트",
-      "caption": "build와 deploy 통과 뒤 verify는 ps·log 출력을 관찰하고 `curl --fail`이 성공할 때 workflow를 완료합니다."
+      "alt": "TODO를 완성하고 heredoc 종료 경계를 수정했을 때 build가 artifact를 만들고 deploy가 서버를 갱신한 뒤 verify가 상태·로그·HTTP 응답을 확인하는 목표 파이프라인 게이트",
+      "caption": "세 job은 실습 목표입니다. 시작 상태의 TODO와 들여쓰기된 ENV 종료자를 고치고 실제 run 증거를 얻기 전에는 pipeline 통과를 단정하지 않습니다."
     },
     "terms": [
       { "term": "job", "meaning": "CI/CD workflow 안에서 하나의 책임을 수행하는 실행 단위" },
@@ -27,7 +27,7 @@ window.visualLabData = {
         "body": "release 파일을 배치하고 애플리케이션 container를 갱신하는 작업입니다. 명령 종료는 중간 상태입니다."
       },
       "right": {
-        "title": "verified service",
+        "title": "서비스 확인 완료",
         "body": "compose 상태와 애플리케이션 로그를 관찰하고 HTTP health check가 성공한 상태입니다. ps와 log 내용을 별도로 판정하는 script는 아닙니다."
       }
     },
@@ -53,7 +53,7 @@ window.visualLabData = {
         "label": "build job",
         "icon": "gate",
         "kind": "job gate",
-        "role": "test, bootJar, artifact upload",
+        "role": "test, bootJar, artifact upload TODO를 가진 목표 gate",
         "boundary": "Build job",
         "codePointIds": [
           "workflow-stages"
@@ -70,7 +70,7 @@ window.visualLabData = {
         "label": "deploy job",
         "icon": "gate",
         "kind": "job gate",
-        "role": "artifact를 받아 EC2 갱신 수행",
+        "role": "artifact download와 EC2 갱신 TODO를 가진 목표 gate",
         "boundary": "Deploy job",
         "codePointIds": [
           "workflow-stages"
@@ -80,7 +80,7 @@ window.visualLabData = {
         "label": "Secret references",
         "icon": "security",
         "kind": "protected config",
-        "role": "SSH와 운영 환경 변수 이름을 안전하게 참조",
+        "role": "repository에는 참조만 두고 원격 .env에는 실제 값을 materialize",
         "boundary": "Trust boundary"
       },
       "ec2-host": {
@@ -94,7 +94,7 @@ window.visualLabData = {
         "label": "scripts/deploy.sh",
         "icon": "tool",
         "kind": "deployment script",
-        "role": "app image build와 compose 갱신",
+        "role": "app image build와 compose 갱신을 채워야 하는 TODO script",
         "boundary": "Remote runtime",
         "codePointIds": [
           "inline-deploy-steps"
@@ -122,7 +122,7 @@ window.visualLabData = {
         "icon": "test",
         "kind": "verification script",
         "role": "compose 상태·로그 출력 관찰과 HTTP 성공 확인",
-        "boundary": "Verification",
+        "boundary": "배포 확인 경계",
         "codePointIds": [
           "inline-deploy-steps"
         ]
@@ -132,7 +132,7 @@ window.visualLabData = {
         "icon": "response",
         "kind": "runtime evidence",
         "role": "애플리케이션 응답 가능 여부",
-        "boundary": "Verification"
+        "boundary": "응답 확인 경계"
       },
       "workflow-result": {
         "label": "Workflow result",
@@ -155,8 +155,15 @@ window.visualLabData = {
         "role": "서버 파일 전달 또는 app 갱신 실패",
         "boundary": "Deploy job"
       },
+      "heredoc-boundary": {
+        "label": ".env heredoc 종료 경계",
+        "icon": "evidence",
+        "kind": "shell parsing boundary",
+        "role": "들여쓰기된 ENV가 종료자로 인식되지 않아 뒤 명령을 .env에 포함",
+        "boundary": "원격 shell"
+      },
       "verify-failure": {
-        "label": "Verification failure",
+        "label": "배포 검증 실패",
         "icon": "evidence",
         "kind": "failure evidence",
         "role": "docker 명령 오류 또는 HTTP health check 실패",
@@ -166,10 +173,16 @@ window.visualLabData = {
     "scenarios": [
       {
         "id": "pipeline-verified",
-        "label": "release-bundle·EC2 입력 준비",
+        "label": "TODO·heredoc 수정 후 검증 목표",
         "flowId": "build-deploy-verify",
         "tone": "recovered",
-        "prompt": "build job이 release-bundle을 만들었고 EC2 배포 입력이 준비되었습니다. 어디까지 관찰해야 성공을 판단할지 예측합니다.",
+        "prompt": "workflow와 script TODO를 채우고 들여쓰기 없는 heredoc 종료자 또는 `printf` 방식으로 원격 `.env` 생성을 고쳤다고 가정합니다. 어디까지 관찰해야 성공을 판단할지 예측합니다.",
+        "observationTitle": "검증된 artifact가 deploy를 거쳐 runtime evidence로 닫히는 경로",
+        "theoryRef": "../../../theory.md#seq-10",
+        "reflection": {
+          "prompt": "workflow success를 구성하는 마지막 증거를 적어보세요.",
+          "hint": "build와 deploy뿐 아니라 ps·log와 HTTP health가 필요합니다."
+        },
         "prediction": {
           "prompt": "어느 gate까지 통과해야 배포 성공으로 판단할 수 있을까요?",
           "options": [
@@ -192,11 +205,11 @@ window.visualLabData = {
           "HTTP response"
         ],
         "diagram": {
-          "caption": "needs gate가 build, deploy, verify를 차례로 열고, artifact 전달과 runtime 검증이 모두 통과해야 workflow가 성공합니다.",
+          "caption": "현재 실행 결과가 아니라 수정 후 목표 흐름입니다. needs gate, artifact 전달, deploy, runtime 검증이 실제 run에서 모두 통과해야 workflow가 성공합니다.",
           "lanes": [
             {
               "id": "workflow-orchestration",
-              "label": "Workflow orchestration",
+              "label": "workflow 시작 → job 의존성",
               "description": "job의 성공 상태가 다음 needs gate를 여는 조건입니다.",
               "steps": [
                 {
@@ -204,7 +217,14 @@ window.visualLabData = {
                   "to": "github-actions",
                   "verb": "workflow 시작",
                   "payload": "push | workflow_dispatch",
-                  "kind": "request"
+                  "kind": "request",
+                  "effect": {
+                    "kind": "gate",
+                    "subject": "workflow trigger",
+                    "before": "GitHub Actions workflow는 event를 기다리는 상태",
+                    "after": "push 또는 `workflow_dispatch` event가 build job을 시작함"
+                  },
+                  "evidenceScope": "code"
                 },
                 {
                   "from": "github-actions",
@@ -214,21 +234,42 @@ window.visualLabData = {
                   "kind": "call",
                   "codePointIds": [
                     "workflow-stages"
-                  ]
+                  ],
+                  "effect": {
+                    "kind": "verify",
+                    "subject": "build artifact",
+                    "before": "source checkout 뒤 test result와 jar가 없음",
+                    "after": "build job이 test 통과 여부와 executable jar 생성을 결정함"
+                  },
+                  "evidenceScope": "test"
                 },
                 {
                   "from": "build-job",
                   "to": "release-bundle",
                   "verb": "artifact 업로드",
                   "payload": "release-bundle",
-                  "kind": "transform"
+                  "kind": "transform",
+                  "effect": {
+                    "kind": "persist",
+                    "subject": "`release-bundle`",
+                    "before": "jar와 배포 파일이 build runner filesystem에만 있음",
+                    "after": "Actions artifact storage에 `release-bundle`이 저장됨"
+                  },
+                  "evidenceScope": "runtime"
                 },
                 {
                   "from": "release-bundle",
                   "to": "deploy-job",
                   "verb": "artifact 다운로드",
                   "payload": "needs: build passed",
-                  "kind": "call"
+                  "kind": "call",
+                  "effect": {
+                    "kind": "transfer",
+                    "subject": "`release-bundle`",
+                    "before": "deploy runner에는 build job의 release 파일이 없음",
+                    "after": "build 성공 뒤 deploy runner에 `release-bundle`이 내려옴"
+                  },
+                  "evidenceScope": "runtime"
                 },
                 {
                   "from": "deploy-job",
@@ -236,29 +277,50 @@ window.visualLabData = {
                   "verb": "verify gate 개방",
                   "payload": "needs: deploy passed",
                   "kind": "call",
-                  "concept": "실패 차단 gate"
+                  "concept": "실패 차단 gate",
+                  "effect": {
+                    "kind": "gate",
+                    "subject": "verify job",
+                    "before": "deploy job이 끝나지 않아 verify job은 pending임",
+                    "after": "deploy exit code 0 뒤 verify job이 runnable 상태가 됨"
+                  },
+                  "evidenceScope": "code"
                 }
               ]
             },
             {
               "id": "remote-deploy",
-              "label": "Artifact transfer → EC2 runtime",
-              "description": "deploy job은 bundle과 secret 참조를 사용해 원격 app container를 갱신합니다.",
+              "label": "artifact 전달 → EC2 갱신",
+              "description": "수정 후 deploy job은 bundle을 SCP로 배치하고 secret 값을 원격 `.env`에 기록한 뒤 app 갱신 script를 실행합니다.",
               "steps": [
                 {
                   "from": "deploy-job",
                   "to": "ec2-host",
                   "verb": "전송과 원격 실행",
                   "payload": "SCP release-bundle + SSH command",
-                  "kind": "call"
+                  "kind": "call",
+                  "effect": {
+                    "kind": "transfer",
+                    "subject": "deployment bundle",
+                    "before": "release 파일이 Actions runner에만 있음",
+                    "after": "SCP로 EC2 release directory에 bundle이 복사되고 SSH command가 시작됨"
+                  },
+                  "evidenceScope": "runtime"
                 },
                 {
                   "from": "secret-references",
                   "to": "ec2-host",
                   "verb": "운영 설정 주입",
-                  "payload": "secret references only",
+                  "payload": "GitHub Secrets 참조 → EC2 .env 실제 값",
                   "kind": "config",
-                  "check": "secret 값은 diagram과 log에 노출하지 않습니다."
+                  "check": "repository와 log에는 값을 노출하지 않되, 원격 `.env`에는 실제 값이 기록됩니다. 현재 workflow는 파일 권한을 별도로 강화하지 않습니다.",
+                  "effect": {
+                    "kind": "transfer",
+                    "subject": "secret values",
+                    "before": "repository와 release bundle에는 운영 secret 값 대신 참조만 있음",
+                    "after": "workflow shell이 GitHub Secrets 실제 값을 EC2 `.env` 파일에 materialize함"
+                  },
+                  "evidenceScope": "code"
                 },
                 {
                   "from": "ec2-host",
@@ -268,7 +330,14 @@ window.visualLabData = {
                   "kind": "call",
                   "codePointIds": [
                     "inline-deploy-steps"
-                  ]
+                  ],
+                  "effect": {
+                    "kind": "transfer",
+                    "subject": "deploy command",
+                    "before": "EC2 release directory에 bundle과 `.env`가 준비됨",
+                    "after": "EC2 shell이 `scripts/deploy.sh`를 실행함"
+                  },
+                  "evidenceScope": "runtime"
                 },
                 {
                   "from": "deploy-script",
@@ -276,13 +345,20 @@ window.visualLabData = {
                   "verb": "app 갱신",
                   "payload": "docker build + compose up -d",
                   "kind": "transform",
-                  "check": "DB와 Redis를 불필요하게 내리는 흐름으로 해석하지 않습니다."
+                  "check": "DB와 Redis를 불필요하게 내리는 흐름으로 해석하지 않습니다.",
+                  "effect": {
+                    "kind": "transform",
+                    "subject": "app container",
+                    "before": "EC2에 이전 app image 또는 container가 있음",
+                    "after": "새 image build와 `compose up -d` 뒤 app container가 교체됨"
+                  },
+                  "evidenceScope": "runtime"
                 }
               ]
             },
             {
               "id": "runtime-verification",
-              "label": "Runtime verification",
+              "label": "process 증거 → HTTP 검증",
               "description": "배포 명령 종료와 서비스 정상 판정을 분리합니다.",
               "steps": [
                 {
@@ -290,28 +366,56 @@ window.visualLabData = {
                   "to": "verify-script",
                   "verb": "원격 검증 실행",
                   "payload": "bash scripts/check-deploy.sh",
-                  "kind": "call"
+                  "kind": "call",
+                  "effect": {
+                    "kind": "verify",
+                    "subject": "verify script",
+                    "before": "deploy script는 끝났지만 서비스 success는 정해지지 않음",
+                    "after": "EC2 shell이 `scripts/check-deploy.sh`를 실행함"
+                  },
+                  "evidenceScope": "runtime"
                 },
                 {
                   "from": "verify-script",
                   "to": "app-container",
                   "verb": "상태와 로그 확인",
                   "payload": "docker compose ps + docker logs",
-                  "kind": "compare"
+                  "kind": "compare",
+                  "effect": {
+                    "kind": "verify",
+                    "subject": "container evidence",
+                    "before": "app container의 running state와 startup outcome을 모름",
+                    "after": "`compose ps`와 `docker logs`가 container state와 startup failure를 출력함"
+                  },
+                  "evidenceScope": "runtime"
                 },
                 {
                   "from": "verify-script",
                   "to": "http-response",
                   "verb": "응답 확인",
                   "payload": "curl http://localhost:8080/",
-                  "kind": "request"
+                  "kind": "request",
+                  "effect": {
+                    "kind": "verify",
+                    "subject": "HTTP health",
+                    "before": "Spring process가 port 8080에 응답하는지 모름",
+                    "after": "`curl --fail` exit code가 HTTP endpoint의 사용 가능 여부를 나타냄"
+                  },
+                  "evidenceScope": "runtime"
                 },
                 {
                   "from": "http-response",
                   "to": "workflow-result",
                   "verb": "성공 판정",
                   "payload": "ps·log output observed + HTTP health check passed",
-                  "kind": "response"
+                  "kind": "response",
+                  "effect": {
+                    "kind": "verify",
+                    "subject": "workflow success",
+                    "before": "ps·log·HTTP evidence가 모두 수집된 상태",
+                    "after": "container running과 health check 통과가 함께 확인돼 workflow가 success가 됨"
+                  },
+                  "evidenceScope": "runtime"
                 }
               ]
             }
@@ -329,8 +433,8 @@ window.visualLabData = {
             "tone": "recovered"
           }
         ],
-        "evidence": "build 산출물이 artifact로 전달되고 check-deploy.sh가 compose 상태와 로그를 출력한 뒤 `curl --fail`로 HTTP 응답을 확인합니다.",
-        "outcome": "배포 명령 종료가 아니라 runtime 출력을 관찰하고 HTTP health check가 성공해야 workflow를 성공으로 판정합니다."
+        "evidence": "TODO와 heredoc을 고친 실제 run에서 artifact 전달, deploy script 실행, compose·log 출력, `curl --fail` 결과를 각각 확인해야 합니다.",
+        "outcome": "현재 저장소가 이미 통과했다고 말하지 않습니다. 수정 후에도 runtime 출력과 HTTP health check가 성공해야 workflow를 성공으로 판정합니다."
       },
       {
         "id": "pipeline-build-failed",
@@ -338,6 +442,12 @@ window.visualLabData = {
         "flowId": "build-deploy-verify",
         "tone": "blocked",
         "prompt": "테스트 또는 bootJar가 실패했을 때 deploy가 실행되는지 확인합니다.",
+        "observationTitle": "build 실패가 artifact와 deploy job을 막는 경로",
+        "theoryRef": "../../../theory.md#seq-10",
+        "reflection": {
+          "prompt": "build gate 실패 뒤 실행되지 않는 job과 artifact를 적어보세요.",
+          "hint": "`release-bundle`이 없고 `needs` 조건 때문에 deploy가 열리지 않습니다."
+        },
         "prediction": {
           "prompt": "build가 실패하면 deploy job은 어떻게 될까요?",
           "options": [
@@ -360,7 +470,7 @@ window.visualLabData = {
           "lanes": [
             {
               "id": "build-blocked",
-              "label": "Build gate",
+              "label": "build 실패 → deploy 차단",
               "description": "처음 실패한 build step에서 원인 분석을 시작합니다.",
               "steps": [
                 {
@@ -368,14 +478,28 @@ window.visualLabData = {
                   "to": "github-actions",
                   "verb": "workflow 시작",
                   "payload": "push | workflow_dispatch",
-                  "kind": "request"
+                  "kind": "request",
+                  "effect": {
+                    "kind": "gate",
+                    "subject": "workflow trigger",
+                    "before": "GitHub Actions workflow는 event를 기다리는 상태",
+                    "after": "push 또는 `workflow_dispatch` event가 build job을 시작함"
+                  },
+                  "evidenceScope": "code"
                 },
                 {
                   "from": "github-actions",
                   "to": "build-job",
                   "verb": "test와 build 실행",
                   "payload": "./gradlew test bootJar",
-                  "kind": "call"
+                  "kind": "call",
+                  "effect": {
+                    "kind": "verify",
+                    "subject": "build gate",
+                    "before": "trigger 뒤 release artifact 생성 가능 여부가 정해지지 않음",
+                    "after": "test와 `bootJar` exit code가 build job의 pass·fail을 결정함"
+                  },
+                  "evidenceScope": "test"
                 },
                 {
                   "from": "build-job",
@@ -383,7 +507,14 @@ window.visualLabData = {
                   "verb": "첫 실패 기록",
                   "payload": "test 또는 bootJar failure",
                   "kind": "failure",
-                  "check": "실패한 step과 log를 먼저 확인합니다."
+                  "check": "실패한 step과 log를 먼저 확인합니다.",
+                  "effect": {
+                    "kind": "gate",
+                    "subject": "build job",
+                    "before": "test 또는 `bootJar`가 non-zero exit code로 끝남",
+                    "after": "`release-bundle`이 생기지 않고 deploy job은 skipped가 됨"
+                  },
+                  "evidenceScope": "test"
                 }
               ]
             }
@@ -421,96 +552,141 @@ window.visualLabData = {
       },
       {
         "id": "pipeline-deploy-failed",
-        "label": "EC2 갱신 명령 오류",
+        "label": "원격 .env heredoc 미종료",
         "flowId": "workflow-step-responsibility",
         "tone": "blocked",
-        "prompt": "artifact는 준비됐지만 서버 갱신에 실패한 경우 verify 경계를 확인합니다.",
+        "prompt": "현재 가이드와 완성 예시의 원격 `.env` 작성 구간에서 종료자 `ENV` 앞에 공백이 남습니다. shell이 실제로 실행하는 범위를 확인합니다.",
+        "observationTitle": "들여쓰기된 ENV가 닫히지 않아 deploy 명령이 .env에 삼켜지는 경로",
+        "theoryRef": "../../../theory.md#seq-10",
+        "reflection": {
+          "prompt": "workflow job 상태와 실제 deploy script 실행을 분리하는 증거를 적어보세요.",
+          "hint": "heredoc 종료자는 들여쓰기 없이 전달돼야 하며 job green만으로 원격 command 실행을 보장하지 않습니다."
+        },
         "prediction": {
-          "prompt": "artifact가 존재하지만 서버 갱신이 실패했다면 어디부터 확인할까요?",
+          "prompt": "들여쓰기된 `ENV` 뒤의 deploy command는 어떻게 처리될까요?",
           "options": [
-            { "id": "build", "label": "이미 통과한 build 테스트" },
-            { "id": "deploy", "label": "deploy step과 서버 갱신 로그" },
-            { "id": "verify", "label": "실행되지 않은 HTTP verify" }
+            { "id": "build", "label": "정상적으로 별도 실행" },
+            { "id": "deploy", "label": ".env 내용으로 소비되어 실행 안 됨" },
+            { "id": "verify", "label": "자동으로 권한까지 강화" }
           ],
           "answer": "deploy",
-          "explanation": "build 성공과 deploy 성공은 별도입니다. 처음 실패한 deploy step과 서버 갱신 책임을 먼저 좁힙니다."
+          "explanation": "공백이 남은 `ENV`는 heredoc 종료자가 아닙니다. 뒤의 chmod와 deploy.sh 호출이 `.env` 입력으로 소비될 수 있어 실제 app 갱신이 재현되지 않습니다."
         },
         "route": [
           "build job",
           "Artifact",
           "deploy job",
-          "deploy.sh",
-          "EC2 Runtime",
-          "verify job"
+          "cat > .env <<ENV",
+          "들여쓰기된 ENV",
+          "deploy.sh line swallowed"
         ],
         "diagram": {
-          "caption": "artifact 생성과 서버 갱신은 별도 책임이며, deploy가 실패하면 verify gate는 열리지 않습니다.",
+          "caption": "artifact와 SSH 연결이 준비돼도 heredoc이 닫히지 않으면 뒤의 deploy.sh 줄이 `.env` 내용이 됩니다. SSH가 0으로 끝날 가능성도 있어 job 상태만으로 성공을 판정할 수 없습니다.",
           "lanes": [
             {
               "id": "deploy-blocked",
-              "label": "Artifact transfer → Deploy gate",
-              "description": "검증된 bundle이 있어도 원격 갱신 실패는 별도로 진단합니다.",
+              "label": "artifact 전달 → 원격 shell parsing blocker",
+              "description": "검증된 bundle이 있어도 원격 `.env` 생성 문법이 deploy script 실행보다 먼저 닫혀야 합니다.",
               "steps": [
                 {
                   "from": "build-job",
                   "to": "release-bundle",
                   "verb": "artifact 업로드",
                   "payload": "release-bundle",
-                  "kind": "transform"
+                  "kind": "transform",
+                  "effect": {
+                    "kind": "persist",
+                    "subject": "`release-bundle`",
+                    "before": "jar와 배포 파일이 build runner filesystem에만 있음",
+                    "after": "Actions artifact storage에 `release-bundle`이 저장됨"
+                  },
+                  "evidenceScope": "runtime"
                 },
                 {
                   "from": "release-bundle",
                   "to": "deploy-job",
                   "verb": "artifact 다운로드",
                   "payload": "needs: build passed",
-                  "kind": "call"
+                  "kind": "call",
+                  "effect": {
+                    "kind": "transfer",
+                    "subject": "`release-bundle`",
+                    "before": "deploy runner에는 build job의 release 파일이 없음",
+                    "after": "build 성공 뒤 deploy runner에 `release-bundle`이 내려옴"
+                  },
+                  "evidenceScope": "runtime"
                 },
                 {
                   "from": "deploy-job",
                   "to": "ec2-host",
                   "verb": "전송과 원격 실행",
                   "payload": "SCP + SSH",
-                  "kind": "call"
+                  "kind": "call",
+                  "effect": {
+                    "kind": "transfer",
+                    "subject": "deployment bundle",
+                    "before": "release 파일이 Actions runner에만 있음",
+                    "after": "SCP로 EC2 release directory에 bundle이 복사되고 SSH command가 시작됨"
+                  },
+                  "evidenceScope": "runtime"
                 },
                 {
                   "from": "ec2-host",
-                  "to": "deploy-script",
-                  "verb": "갱신 script 실행",
-                  "payload": "scripts/deploy.sh",
-                  "kind": "call"
+                  "to": "heredoc-boundary",
+                  "verb": ".env 작성 시작",
+                  "payload": "cat > .env <<ENV",
+                  "kind": "config",
+                  "effect": {
+                    "kind": "transfer",
+                    "subject": "원격 `.env` heredoc",
+                    "before": "EC2 release directory에 운영 `.env`가 아직 완성되지 않음",
+                    "after": "remote shell이 `ENV` 종료자를 기다리며 이후 줄을 `.env` 입력으로 읽음"
+                  },
+                  "evidenceScope": "code"
                 },
                 {
-                  "from": "deploy-script",
+                  "from": "heredoc-boundary",
                   "to": "deploy-failure",
-                  "verb": "서버 갱신 중단",
-                  "payload": "image build 또는 compose failure",
+                  "verb": "들여쓰기된 종료자 무시",
+                  "payload": "  ENV + chmod + deploy.sh lines",
                   "kind": "failure",
-                  "check": "deploy step log에서 첫 실패 명령을 확인합니다."
+                  "check": "종료자를 들여쓰기 없이 전달하거나 `printf`로 바꾼 뒤 command trace를 확인합니다.",
+                  "effect": {
+                    "kind": "gate",
+                    "subject": "remote deploy command",
+                    "before": "`ENV` 앞 공백 때문에 heredoc이 닫히지 않음",
+                    "after": "chmod와 deploy.sh 줄이 `.env` 내용으로 소비되어 app 갱신 command가 실행되지 않음"
+                  },
+                  "evidenceScope": "code"
                 }
               ]
             }
           ],
           "notReached": [
             {
-              "label": "verify job",
-              "reason": "needs: deploy 조건이 충족되지 않아 실행되지 않습니다."
+              "label": "scripts/deploy.sh 실행",
+              "reason": "해당 줄이 닫히지 않은 `.env` heredoc 내용으로 소비됩니다."
+            },
+            {
+              "label": "실제 app 갱신 증거",
+              "reason": "SSH step이 0으로 끝날 수도 있으므로 job 상태와 별개로 command 실행이 확인되지 않습니다."
             }
           ]
         },
         "snapshot": [
           {
             "label": "Deploy",
-            "value": "서버 갱신 실패 · verify 차단",
+            "value": "deploy.sh 실행 안 됨",
             "tone": "blocked"
           },
           {
-            "label": "verify job",
-            "value": "실행되지 않음",
+            "label": "job 상태",
+            "value": "green 가능 · 실제 배포 미확인",
             "tone": "blocked"
           }
         ],
-        "evidence": "deploy.sh는 release 파일 배치와 애플리케이션 컨테이너 갱신을 담당하며, 실패 시 다음 job으로 넘어가지 않습니다.",
-        "outcome": "build 성공과 deploy 성공을 분리하고 deploy step 로그를 먼저 확인합니다.",
+        "evidence": "release 배치는 workflow의 SCP가 담당합니다. 현재 원격 heredoc은 deploy.sh 실행 줄을 `.env`에 포함할 수 있어 app image build와 Compose 갱신 증거가 없습니다.",
+        "outcome": "job green 가능성과 실제 배포 성공을 분리하고 heredoc 종료 방식과 원격 command trace를 먼저 고칩니다.",
         "stopAfter": 3
       },
       {
@@ -519,6 +695,12 @@ window.visualLabData = {
         "flowId": "workflow-step-responsibility",
         "tone": "warning",
         "prompt": "app container 갱신 명령은 끝났지만 `curl --fail` HTTP 확인이 성공하지 않았습니다. 현재 상태를 예측합니다.",
+        "observationTitle": "app 갱신 명령 뒤 health 증거가 없어 성공 판정이 멈추는 경로",
+        "theoryRef": "../../../theory.md#seq-10",
+        "reflection": {
+          "prompt": "deploy가 끝났어도 완료로 볼 수 없는 조건을 적어보세요.",
+          "hint": "첫 실패한 ps, log, curl 항목과 runtime log를 연결하세요."
+        },
         "prediction": {
           "prompt": "deploy는 끝났지만 HTTP 확인이 실패했습니다. 현재 상태는 무엇일까요?",
           "options": [
@@ -543,7 +725,7 @@ window.visualLabData = {
           "lanes": [
             {
               "id": "verify-warning",
-              "label": "Deploy passed → Verify failed",
+              "label": "deploy 통과 → verify 실패",
               "description": "deploy 완료와 서비스 정상 상태를 서로 다른 gate로 봅니다.",
               "steps": [
                 {
@@ -551,28 +733,56 @@ window.visualLabData = {
                   "to": "deploy-job",
                   "verb": "배포 입력 전달",
                   "payload": "release-bundle",
-                  "kind": "call"
+                  "kind": "call",
+                  "effect": {
+                    "kind": "transfer",
+                    "subject": "`release-bundle`",
+                    "before": "artifact storage에 검증된 bundle이 있음",
+                    "after": "deploy job workspace에 같은 bundle이 복원됨"
+                  },
+                  "evidenceScope": "runtime"
                 },
                 {
                   "from": "deploy-job",
                   "to": "app-container",
                   "verb": "app 갱신 완료",
                   "payload": "scripts/deploy.sh",
-                  "kind": "transform"
+                  "kind": "transform",
+                  "effect": {
+                    "kind": "transform",
+                    "subject": "app container",
+                    "before": "deploy runner가 bundle을 EC2로 보냈지만 container 상태는 이전 값",
+                    "after": "deploy script 종료 뒤 app container가 새 image를 가리킴"
+                  },
+                  "evidenceScope": "runtime"
                 },
                 {
                   "from": "deploy-job",
                   "to": "verify-job",
                   "verb": "verify gate 개방",
                   "payload": "needs: deploy passed",
-                  "kind": "call"
+                  "kind": "call",
+                  "effect": {
+                    "kind": "gate",
+                    "subject": "verify job",
+                    "before": "deploy job이 끝나지 않아 verify job은 pending임",
+                    "after": "deploy exit code 0 뒤 verify job이 runnable 상태가 됨"
+                  },
+                  "evidenceScope": "code"
                 },
                 {
                   "from": "verify-job",
                   "to": "verify-script",
                   "verb": "증거 수집",
                   "payload": "compose ps output + logs + curl --fail",
-                  "kind": "compare"
+                  "kind": "compare",
+                  "effect": {
+                    "kind": "verify",
+                    "subject": "runtime evidence",
+                    "before": "app 갱신 명령만 끝나 HTTP 사용 가능 여부는 모름",
+                    "after": "verify script가 ps output·startup log·`curl --fail` exit code를 모음"
+                  },
+                  "evidenceScope": "runtime"
                 },
                 {
                   "from": "verify-script",
@@ -580,7 +790,14 @@ window.visualLabData = {
                   "verb": "성공 판정 중단",
                   "payload": "docker command error or HTTP health check failure",
                   "kind": "failure",
-                  "check": "실패한 첫 검증 항목과 runtime log를 연결합니다."
+                  "check": "실패한 첫 검증 항목과 runtime log를 연결합니다.",
+                  "effect": {
+                    "kind": "gate",
+                    "subject": "verify job",
+                    "before": "deploy는 통과했지만 ps·log·health 중 하나가 실패함",
+                    "after": "첫 docker command error 또는 health failure에서 workflow가 failed가 됨"
+                  },
+                  "evidenceScope": "runtime"
                 }
               ]
             }
@@ -819,7 +1036,7 @@ window.visualLabData = {
           "message": "결과와 실패 지점을 확인합니다.",
           "messageKind": "response",
           "problem": "구현 후 실제로 어느 지점이 통과했는지 확인해야 합니다.",
-          "concept": "Verification",
+          "concept": "배포 결과 검증",
           "action": "문서의 확인 명령이나 화면에서 결과를 검증합니다.",
           "check": "성공 흐름과 실패 흐름을 말로 설명합니다.",
           "note": "Visual Lab은 코드를 대신 완성하지 않고 확인 지점을 고정합니다.",
@@ -884,21 +1101,21 @@ window.visualLabData = {
   "codePoints": [
     {
       "id": "workflow-stages",
-      "title": "Workflow는 build, deploy, verify 책임을 분리합니다",
+      "title": "실습 시작 workflow는 deploy가 build를 기다리는 뼈대를 제공합니다",
       "file": ".github/workflows/deploy.yml",
       "language": "yaml",
-      "snippet": "jobs:\n  build:\n    steps:\n      - run: ./gradlew test bootJar\n      - uses: actions/upload-artifact@v4\n  deploy:\n    needs: build\n    steps:\n      - uses: actions/download-artifact@v4\n      - run: bash scripts/deploy.sh\n  verify:\n    needs: deploy\n    steps:\n      - run: bash scripts/check-deploy.sh",
-      "explanation": "완성 workflow는 build 산출물을 artifact로 넘기고 deploy와 verify를 `needs`로 연결해 실패 경계를 분리합니다.",
-      "check": "실패한 step 이후 작업이 실행되지 않는지 확인합니다."
+      "snippet": "  deploy:\n    runs-on: ubuntu-latest\n    needs: build\n    env:\n      RELEASE_DIR: /home/${{ secrets.EC2_USERNAME }}/aandi-deployment-runtime-lab\n      APP_IMAGE: aandi-deployment-runtime-lab:latest\n    steps:\n      - name: Download release artifact\n        # TODO 4. build job이 올린 artifact를 다시 내려받으세요.",
+      "explanation": "실습 시작 파일의 실제 발췌입니다. `needs: build`는 있지만 artifact download와 뒤의 원격 작업은 TODO라서 완성 pipeline 증거가 아닙니다.",
+      "check": "TODO를 채운 실제 run에서 build 실패가 deploy를 막는지 확인합니다."
     },
     {
       "id": "inline-deploy-steps",
-      "title": "Deploy와 verify script가 서버 작업을 분리합니다",
+      "title": "현재 가이드의 들여쓰기된 ENV는 원격 deploy를 막습니다",
       "file": ".github/workflows/deploy.yml",
       "language": "yaml",
-      "snippet": "- name: Deploy on EC2\n  run: APP_IMAGE=${APP_IMAGE} bash scripts/deploy.sh ${RELEASE_DIR}\n\n- name: Verify deployment on EC2\n  run: bash scripts/check-deploy.sh ${RELEASE_DIR}",
-      "explanation": "완성 workflow는 배포와 검증 script를 호출하고, 배포 script는 DB와 Redis를 내리지 않은 채 image를 갱신합니다.",
-      "check": "배포 실패 시 어떤 step 로그를 먼저 볼지 확인합니다."
+      "snippet": "            MYSQL_DATABASE=${{ secrets.PROD_MYSQL_DATABASE }}\n            MYSQL_ROOT_PASSWORD=${{ secrets.PROD_MYSQL_ROOT_PASSWORD }}\n            ENV\n            docker build -t ${APP_IMAGE} .\n            docker compose --env-file .env -f deploy/compose.prod.yaml up -d\n            docker compose --env-file .env -f deploy/compose.prod.yaml ps\n            docker logs --tail 50 aandi-app\n          EOF",
+      "explanation": "현재 가이드 workflow의 실제 발췌입니다. YAML 공통 들여쓰기가 제거돼도 `ENV` 앞 공백이 남아 inner heredoc이 닫히지 않고 뒤 docker 명령이 `.env`로 소비될 수 있습니다.",
+      "check": "들여쓰기 없는 종료자나 `printf` 방식으로 수정한 뒤 원격 command trace를 확인합니다."
     }
   ],
   "concepts": [
@@ -916,7 +1133,7 @@ window.visualLabData = {
     },
     {
       "title": "Secret은 workflow 입력입니다",
-      "body": "서버 접속 정보와 민감한 값은 코드가 아니라 안전한 저장소에서 주입합니다."
+      "body": "Workflow YAML에는 `${{ secrets.* }}` 참조만 두지만 실행 시 실제 값은 EC2 `.env`에 기록됩니다. 현재 workflow는 이 파일 권한을 별도로 강화하지 않습니다."
     }
   ],
   "practice": [
@@ -999,8 +1216,8 @@ window.visualLabData = {
     },
     {
       "term": "Secret",
-      "meaning": "workflow가 안전하게 주입받는 민감한 설정 값입니다.",
-      "caution": "로그나 저장소 파일에 실제 값을 남기지 않습니다."
+      "meaning": "repository의 `${{ secrets.* }}` 참조가 실행 시 실제 값으로 펼쳐져 원격 `.env`에 기록되는 민감한 설정입니다.",
+      "caution": "YAML에 참조만 있다는 사실은 EC2 `.env` 권한 보호를 뜻하지 않습니다. 현재 workflow에는 별도 chmod·chown·umask가 없습니다."
     }
   ],
   "practical": [
