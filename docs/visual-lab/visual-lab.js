@@ -29,7 +29,7 @@
     signal: "진행 중",
     blocked: "여기서 차단",
     warning: "주의 필요",
-    recovered: "확인 완료",
+    recovered: "경로 확인됨",
   };
   const edgeKindLabels = {
     request: "요청",
@@ -42,6 +42,29 @@
     config: "설정 주입",
     compare: "비교",
   };
+  const evidenceScopeLabels = {
+    code: "코드에서 확인",
+    test: "테스트에서 확인",
+    runtime: "실행 결과에서 확인",
+    manual: "직접 실행해 확인",
+    concept: "이론에서 확인",
+  };
+  const observationTitles = {
+    request: "요청과 응답이 오가는 순서",
+    "request-trace": "요청 객체가 바뀌는 순서",
+    persistence: "요청이 DB 상태로 바뀌는 순서",
+    gate: "요청이 멈추는 지점",
+    auth: "토큰과 권한을 확인하는 순서",
+    trust: "외부 신뢰를 내부 계정으로 연결하는 순서",
+    test: "입력과 검증 근거가 이어지는 순서",
+    cache: "캐시 상태가 바뀌는 순서",
+    realtime: "연결과 구독 뒤 메시지가 전달되는 순서",
+    runtime: "산출물이 실행 상태가 되는 순서",
+    pipeline: "배포 단계가 통과하거나 멈추는 순서",
+    refactor: "구조가 바뀌어도 동작을 지키는 순서",
+    event: "응답과 이벤트가 갈라져 전달되는 순서",
+    trace: "책임 사이에서 값이 이동하는 순서",
+  };
   const state = {
     scenarioIndex: 0,
     flowIndex: 0,
@@ -49,6 +72,7 @@
     checked: new Set(),
     predictions: new Map(),
     revealedScenarios: new Set(),
+    reflections: new Map(),
   };
   let sectionObserver = null;
 
@@ -239,6 +263,57 @@
     };
   }
 
+  function normalizedEffect(edge, fromNode, toNode, verb, payload) {
+    const declared = edge && edge.effect && typeof edge.effect === "object" ? edge.effect : {};
+    const transformParts = String(payload).split(/\s*[→➝]\s*/).filter(Boolean);
+    let before = declared.before;
+    let after = declared.after;
+    let kind = declared.kind;
+
+    if (!kind) {
+      kind = {
+        transform: "transform",
+        persist: "persist",
+        response: "return",
+        failure: "gate",
+        event: "fanout",
+        compare: "preserve",
+      }[edge.kind] || "transfer";
+    }
+
+    if (!before || !after) {
+      if (edge.kind === "transform" && transformParts.length >= 2) {
+        before = before || transformParts[0];
+        after = after || transformParts.slice(1).join(" → ");
+      } else if (edge.kind === "failure") {
+        before = before || `${fromNode.label}까지 도달`;
+        after = after || `${toNode.label}에서 이후 경로 중단`;
+      } else if (edge.kind === "persist") {
+        before = before || `${toNode.label}에 반영되기 전`;
+        after = after || `${verb} 요청 · ${payload}`;
+      } else if (edge.kind === "response") {
+        before = before || `${fromNode.label}이 가진 결과`;
+        after = after || `${toNode.label}이 ${payload} 수신`;
+      } else if (edge.kind === "event") {
+        before = before || `${fromNode.label}이 가진 ${payload}`;
+        after = after || `${toNode.label}로 이벤트 전달`;
+      } else if (edge.from === edge.to) {
+        before = before || `${verb} 전 · ${payload}`;
+        after = after || `${verb} 후 · ${payload}`;
+      } else {
+        before = before || `${fromNode.label}이 가진 ${payload}`;
+        after = after || `${toNode.label}이 같은 전달물을 받음`;
+      }
+    }
+
+    return {
+      kind,
+      subject: declared.subject || payload,
+      before,
+      after,
+    };
+  }
+
   function semanticSteps(sequence, scenario) {
     const diagram = semanticDiagram(scenario);
     if (!diagram) {
@@ -275,6 +350,10 @@
           codePointIds: linkedCodePointIds,
           verb,
           payload,
+          effect: normalizedEffect(edge, fromNode, toNode, verb, payload),
+          evidenceScope: edge.evidenceScope || (list(edge.codePointIds).length ? "code" : "manual"),
+          _fromId: edge.from,
+          _toId: edge.to,
           _laneId: lane.id || `lane-${laneIndex + 1}`,
           _laneLabel: lane.label || `경로 ${laneIndex + 1}`,
           _laneIndex: laneIndex,
@@ -285,6 +364,47 @@
       });
     });
     return normalized;
+  }
+
+  function diagramParticipantIds(diagram) {
+    const referenced = [];
+    list(diagram && diagram.lanes).forEach((lane) => {
+      list(lane && lane.steps).forEach((edge) => {
+        [edge && edge.from, edge && edge.to].forEach((nodeId) => {
+          if (nodeId && !referenced.includes(nodeId)) {
+            referenced.push(nodeId);
+          }
+        });
+      });
+    });
+    const declared = list(diagram && diagram.participants).filter((nodeId) => referenced.includes(nodeId));
+    referenced.forEach((nodeId) => {
+      if (!declared.includes(nodeId)) {
+        declared.push(nodeId);
+      }
+    });
+    return declared;
+  }
+
+  function normalizedTheoryRef(sequence, scenario, lane, step) {
+    const raw = (step && step.theoryRef) || (lane && lane.theoryRef) || (scenario && scenario.theoryRef);
+    if (typeof raw === "string" && raw) {
+      return { href: raw, label: "이 단계의 이론 이어서 읽기" };
+    }
+    if (raw && typeof raw === "object" && (raw.href || raw.url)) {
+      return {
+        href: raw.href || raw.url,
+        label: raw.label || raw.title || "이 단계의 이론 이어서 읽기",
+      };
+    }
+    const fallback = collectSourceLinks(sequence).find((item) => String(item.label).includes("이론"));
+    return fallback ? { href: fallback.href, label: "관련 이론 전체 보기" } : null;
+  }
+
+  function semanticStepAriaLabel(step, edgeState) {
+    const effect = step.effect || {};
+    const scope = evidenceScopeLabels[step.evidenceScope] || evidenceScopeLabels.manual;
+    return `${step._laneStepIndex + 1}단계, ${step.from}에서 ${step.to}로 ${step.verb}: ${step.payload}. 변화 전: ${effect.before || "이 단계 전 상태"}. 변화 후: ${effect.after || "이 단계 뒤 상태"}. ${scope}. ${routeStateLabel(edgeState)}`;
   }
 
   function scenarioKey(scenario) {
@@ -396,7 +516,7 @@
 
     const intro = createElement("header", "hub-intro");
     intro.append(
-      createElement("p", "eyebrow", "Repository learning path"),
+      createElement("p", "eyebrow", "이 저장소의 학습 순서"),
       createElement("h1", "hub-title", data.title || "A&I Backend Visual Lab"),
       createElement("p", "hub-description", data.description || "시퀀스를 선택해 실제 시스템 흐름을 관찰합니다.")
     );
@@ -436,7 +556,7 @@
     );
     const name = identity.querySelector(".sequence-name");
     name.append(
-      createElement("p", "eyebrow", sequence.subtitle || sequence.topic || "Backend sequence"),
+      createElement("p", "eyebrow", sequence.subtitle || sequence.topic || "백엔드 학습 시퀀스"),
       createElement("p", "sequence-title", sequence.title || "Visual Lab")
     );
 
@@ -510,30 +630,97 @@
     return "pending";
   }
 
-  function renderSemanticNode(sequence, nodeId, activeStep) {
+  function renderSequenceParticipant(sequence, nodeId, participantIndex, activeStep) {
     const node = diagramNode(sequence, nodeId);
-    const card = createElement("li", "semantic-node");
-    card.dataset.kind = String(node.kind || "actor").toLowerCase().replace(/[^a-z0-9-]+/g, "-");
-    if (activeStep && (activeStep.from === node.label || activeStep.to === node.label)) {
-      card.dataset.current = "true";
+    const participant = createElement("li", "sequence-participant");
+    participant.style.gridColumn = String(participantIndex + 1);
+    participant.dataset.kind = String(node.kind || "actor").toLowerCase().replace(/[^a-z0-9-]+/g, "-");
+    if (activeStep && (activeStep._fromId === nodeId || activeStep._toId === nodeId)) {
+      participant.dataset.current = "true";
     }
 
-    const iconWrap = createElement("span", "semantic-node__icon");
+    const iconWrap = createElement("span", "sequence-participant__icon");
     iconWrap.appendChild(createSystemIcon(node.icon));
-    const identity = createElement("span", "semantic-node__identity");
+    const identity = createElement("span", "sequence-participant__identity");
     identity.append(
-      createElement("strong", "semantic-node__label", node.label),
-      createElement("span", "semantic-node__kind", node.kind)
+      createElement("strong", "sequence-participant__label", node.label),
+      createElement("span", "sequence-participant__boundary", node.boundary)
     );
-    card.append(iconWrap, identity, createElement("span", "semantic-node__boundary", node.boundary));
-    card.title = node.role;
-    return card;
+    participant.append(iconWrap, identity, createElement("span", "sequence-participant__role", node.role));
+    return participant;
   }
 
   function laneStartIndex(diagram, selectedLaneIndex) {
     return list(diagram.lanes)
       .slice(0, selectedLaneIndex)
       .reduce((total, lane) => total + list(lane.steps).length, 0);
+  }
+
+  function renderCurrentEffect(sequence, scenario, lane, activeStep) {
+    const detail = createElement("article", "sequence-current-detail");
+    detail.id = `current-message-${activeStep._globalIndex}`;
+    detail.dataset.kind = activeStep.kind || "call";
+    const isSelfCall = activeStep._fromId === activeStep._toId;
+    const heading = createElement("header", "sequence-current-detail__header");
+    heading.append(
+      createElement("p", "sequence-current-detail__step", `현재 단계 ${activeStep._laneStepIndex + 1} / ${activeStep._laneStepCount}`),
+      createElement("h5", "", isSelfCall ? `${activeStep.from} 안에서 ${activeStep.verb}` : `${activeStep.from} → ${activeStep.to} · ${activeStep.verb}`),
+      createElement("code", "sequence-current-detail__payload", activeStep.payload)
+    );
+    detail.appendChild(heading);
+
+    const effect = activeStep.effect || {};
+    const effectTitle = createElement("p", "sequence-effect__subject", `이 단계에서 바뀌는 것 · ${effect.subject || activeStep.payload}`);
+    const effectGrid = createElement("dl", "sequence-effect");
+    const before = createElement("div", "sequence-effect__state");
+    before.append(createElement("dt", "", "이전"), createElement("dd", "", effect.before || "이 단계 전 상태"));
+    const arrow = createElement("span", "sequence-effect__arrow", "→");
+    arrow.setAttribute("aria-hidden", "true");
+    const after = createElement("div", "sequence-effect__state sequence-effect__state--after");
+    after.append(createElement("dt", "", "이후"), createElement("dd", "", effect.after || "이 단계 뒤 상태"));
+    effectGrid.append(before, arrow, after);
+    detail.append(effectTitle, effectGrid);
+
+    const evidence = createElement("aside", "sequence-current-evidence");
+    const scope = evidenceScopeLabels[activeStep.evidenceScope] || evidenceScopeLabels.manual;
+    evidence.append(
+      createElement("span", "sequence-current-evidence__scope", scope),
+      createElement("strong", "", activeStep.check || "입력과 출력의 실제 근거를 확인합니다."),
+      createElement("p", "", activeStep.concept || activeStep.note || "이 전달이 지나는 책임 경계를 확인합니다.")
+    );
+    detail.appendChild(evidence);
+
+    const theoryRef = normalizedTheoryRef(sequence, scenario, lane, activeStep);
+    if (theoryRef) {
+      const link = makeLink(`${theoryRef.label} →`, theoryRef.href, "sequence-theory-link");
+      detail.appendChild(link);
+    }
+    return detail;
+  }
+
+  function renderMobileCurrent(activeStep) {
+    const current = createElement("article", "sequence-mobile-current");
+    current.dataset.kind = activeStep.kind || "call";
+    current.dataset.focusKey = `diagram-step-${activeStep._globalIndex}`;
+    current.tabIndex = -1;
+    const isSelfCall = activeStep._fromId === activeStep._toId;
+    const kindLabel = edgeKindLabels[activeStep.kind] || "전달";
+    current.appendChild(createElement("p", "sequence-mobile-current__step", `단계 ${activeStep._laneStepIndex + 1} / ${activeStep._laneStepCount} · ${kindLabel}${activeStep.kind === "failure" ? " · 여기서 중단" : ""}`));
+    const route = createElement("div", "sequence-mobile-current__route");
+    route.dataset.self = String(isSelfCall);
+    route.append(
+      createElement("strong", "sequence-mobile-current__actor", activeStep.from),
+      createElement("span", "sequence-mobile-current__line", isSelfCall ? "같은 책임 안에서" : `${activeStep.verb} ↓`),
+      createElement("strong", "sequence-mobile-current__actor", activeStep.to)
+    );
+    current.append(
+      route,
+      createElement("p", "sequence-mobile-current__sentence", isSelfCall
+        ? `${activeStep.from} 안에서 ${activeStep.verb} · ${activeStep.payload}`
+        : `${activeStep.from} → ${activeStep.to} · ${activeStep.verb} · ${activeStep.payload}`),
+      createElement("p", "sequence-mobile-current__change", `무엇이 바뀜 · ${activeStep.effect.before} → ${activeStep.effect.after}`)
+    );
+    return current;
   }
 
   function renderSemanticDiagram(sequence, scenario) {
@@ -545,26 +732,33 @@
       lanesData.findIndex((lane, index) => (lane.id || `lane-${index + 1}`) === activeStep._laneId)
     );
     const activeLane = lanesData[activeLaneIndex] || { steps: [] };
-    const laneSteps = semanticSteps(sequence, scenario).filter((step) => step._laneIndex === activeLaneIndex).slice(0, 7);
+    const allSteps = semanticSteps(sequence, scenario);
+    const fullLaneSteps = allSteps.filter((step) => step._laneIndex === activeLaneIndex);
+    const laneSteps = fullLaneSteps.slice(0, 7);
+    const participantIds = diagramParticipantIds(diagram);
     const figure = createElement("figure", "semantic-diagram");
-    figure.setAttribute("aria-label", "선택한 조건의 의미 기반 시스템 경로");
+    figure.setAttribute("aria-label", "선택한 조건에서 전달이 이동하고 상태가 바뀌는 순서");
 
     const reading = createElement("figcaption", "diagram-reading");
     reading.append(
-      createElement("span", "diagram-reading__label", "SYSTEM STORY"),
+      createElement("span", "diagram-reading__label", scenario.observationTitle || observationTitles[normalizedWorkbench(sequence).kind] || observationTitles.trace),
       createElement("strong", "diagram-reading__text", diagram.caption)
     );
     figure.appendChild(reading);
 
     if (lanesData.length > 1) {
-      const laneSelector = createElement("div", "story-lanes");
+      const laneSelector = createElement("div", "sequence-lanes");
       laneSelector.setAttribute("role", "group");
       laneSelector.setAttribute("aria-label", "관찰할 시스템 경로");
+      const nextLaneIds = list(activeLane.nextLaneIds);
       lanesData.forEach((lane, laneIndex) => {
-        const laneButton = createElement("button", "story-lane-button", lane.label || `경로 ${laneIndex + 1}`);
+        const laneId = lane.id || `lane-${laneIndex + 1}`;
+        const isActive = laneIndex === activeLaneIndex;
+        const relation = isActive ? "현재 경로" : nextLaneIds.includes(laneId) ? "다음 경로" : "다른 조건 경로";
+        const laneButton = createElement("button", "sequence-lane-button", `${relation} · ${lane.label || `경로 ${laneIndex + 1}`}`);
         laneButton.type = "button";
         laneButton.dataset.focusKey = `lane-${laneIndex}`;
-        laneButton.setAttribute("aria-pressed", String(laneIndex === activeLaneIndex));
+        laneButton.setAttribute("aria-pressed", String(isActive));
         laneButton.addEventListener("click", () => {
           state.stepIndex = laneStartIndex(diagram, laneIndex);
           render({ focusKey: `lane-${laneIndex}` });
@@ -574,81 +768,117 @@
       figure.appendChild(laneSelector);
     }
 
-    const board = createElement("section", "story-board");
-    const boardHeader = createElement("header", "story-board__header");
+    const board = createElement("section", "sequence-board");
+    const boardHeader = createElement("header", "sequence-board__header");
     boardHeader.append(
       createElement("h4", "", activeLane.label || `경로 ${activeLaneIndex + 1}`),
-      createElement("p", "", activeLane.description || "이 경로의 주체와 전달 단위를 확인합니다.")
+      createElement("p", "", activeLane.description || "위에서 아래로 시간을 따라가며 현재 전달과 상태 변화를 확인합니다.")
     );
-    board.appendChild(boardHeader);
+    board.append(boardHeader, renderMobileCurrent(activeStep));
 
-    const nodeIds = [];
-    list(activeLane.steps).forEach((edge) => {
-      [edge.from, edge.to].forEach((nodeId) => {
-        if (nodeId && !nodeIds.includes(nodeId)) {
-          nodeIds.push(nodeId);
-        }
-      });
+    const viewport = createElement("div", "sequence-stage__viewport");
+    viewport.setAttribute("tabindex", "0");
+    viewport.setAttribute("aria-label", "전체 참여 주체와 수직 시간선. 좌우로 이동해 볼 수 있습니다.");
+    const stage = createElement("div", "sequence-stage");
+    stage.style.setProperty("--participant-count", String(Math.max(participantIds.length, 1)));
+    stage.style.setProperty("--sequence-stage-width", `${Math.max(participantIds.length * 144, 620)}px`);
+
+    const participants = createElement("ol", "sequence-participants");
+    participants.setAttribute("aria-label", "이 경로에 참여하는 책임 주체");
+    participantIds.forEach((nodeId, index) => {
+      participants.appendChild(renderSequenceParticipant(sequence, nodeId, index, activeStep));
     });
-    const topology = createElement("ol", "story-topology");
-    topology.setAttribute("aria-label", `${activeLane.label || "현재 경로"}의 책임 주체`);
-    nodeIds.forEach((nodeId) => topology.appendChild(renderSemanticNode(sequence, nodeId, activeStep)));
-    board.appendChild(topology);
+    stage.appendChild(participants);
 
-    const transitions = createElement("ol", "story-transitions");
-    transitions.setAttribute("aria-label", "현재 경로의 전이 단계");
+    const messagesWrap = createElement("div", "sequence-messages-wrap");
+    const lifelines = createElement("div", "sequence-lifelines");
+    lifelines.setAttribute("aria-hidden", "true");
+    participantIds.forEach((nodeId, index) => {
+      const line = createElement("span", "sequence-lifeline");
+      line.style.gridColumn = String(index + 1);
+      lifelines.appendChild(line);
+    });
+    messagesWrap.appendChild(lifelines);
+
+    const messages = createElement("ol", "sequence-messages");
+    messages.setAttribute("aria-label", "위에서 아래로 흐르는 전달 단계");
     laneSteps.forEach((step) => {
+      const fromIndex = Math.max(0, participantIds.indexOf(step._fromId));
+      const toIndex = Math.max(0, participantIds.indexOf(step._toId));
+      const startIndex = Math.min(fromIndex, toIndex);
+      const endIndex = Math.max(fromIndex, toIndex);
+      const direction = fromIndex === toIndex ? "self" : fromIndex < toIndex ? "forward" : "reverse";
       const edgeState = semanticStepState(step._globalIndex);
-      const item = createElement("li", "story-transition");
+      const item = createElement("li", "sequence-message");
       item.dataset.state = edgeState;
       item.dataset.kind = step.kind || "call";
-      const button = createElement("button", "story-transition__button");
+      item.dataset.direction = direction;
+      const button = createElement("button", "sequence-message__button");
       button.type = "button";
       button.dataset.focusKey = `diagram-step-${step._globalIndex}`;
-      button.setAttribute("aria-label", `${step._laneStepIndex + 1}단계, ${step.from}에서 ${step.to}로 ${step.verb}: ${step.payload}. ${routeStateLabel(edgeState)}`);
+      button.dataset.direction = direction;
+      button.style.setProperty("--message-start", String(startIndex + 1));
+      button.style.setProperty("--message-end", String(endIndex + 2));
+      button.style.setProperty("--message-span", String(endIndex - startIndex + 1));
+      button.setAttribute("aria-label", semanticStepAriaLabel(step, edgeState));
       if (edgeState === "active") {
         button.setAttribute("aria-current", "step");
+        button.setAttribute("aria-controls", `current-message-${step._globalIndex}`);
       }
+      const copy = createElement("span", "sequence-message__copy");
+      copy.append(
+        createElement("span", "sequence-message__ordinal", String(step._laneStepIndex + 1)),
+        createElement("strong", "sequence-message__verb", step.verb),
+        createElement("code", "sequence-message__payload", step.payload)
+      );
+      const line = createElement("span", "sequence-message__line");
+      line.setAttribute("aria-hidden", "true");
       button.append(
-        createElement("span", "story-transition__number", String(step._laneStepIndex + 1).padStart(2, "0")),
-        createElement("strong", "story-transition__route", `${step.from} → ${step.to}`),
-        createElement("span", "story-transition__verb", step.verb),
-        createElement("code", "story-transition__payload", step.payload)
+        copy,
+        line,
+        createElement("span", "sequence-message__state", `${edgeKindLabels[step.kind] || "전달"} · ${step.kind === "failure" ? "여기서 중단" : routeStateLabel(edgeState)}`)
       );
       button.addEventListener("click", () => {
         state.stepIndex = step._globalIndex;
         render({ focusKey: `diagram-step-${step._globalIndex}` });
       });
       item.appendChild(button);
-      transitions.appendChild(item);
+      messages.appendChild(item);
     });
-    board.appendChild(transitions);
-
-    const current = createElement("div", "story-current");
-    const transition = createElement("article", "story-current__transition");
-    transition.append(
-      createElement("p", "story-current__label", `현재 전이 · ${activeStep._laneStepIndex + 1} / ${activeStep._laneStepCount}`),
-      createElement("h5", "", `${activeStep.from} → ${activeStep.to}`),
-      createElement("p", "story-current__action", `${activeStep.verb} · ${activeStep.payload}`)
-    );
-    const reason = createElement("aside", "story-current__reason");
-    reason.append(
-      createElement("p", "story-current__label", "이 단계에서 판단할 것"),
-      createElement("strong", "", activeStep.concept || activeStep.note || "현재 책임 경계를 확인합니다."),
-      createElement("p", "", activeStep.check || "입력과 출력 증거를 확인합니다.")
-    );
-    current.append(transition, reason);
-    board.appendChild(current);
+    messagesWrap.appendChild(messages);
+    stage.appendChild(messagesWrap);
+    viewport.appendChild(stage);
+    board.appendChild(viewport);
+    board.appendChild(renderCurrentEffect(sequence, scenario, activeLane, activeStep));
 
     const lane = currentLaneContext(sequence);
+    const activeLaneId = activeLane.id || `lane-${activeLaneIndex + 1}`;
+    const previousLaneIndexes = lanesData
+      .map((candidate, index) => list(candidate && candidate.nextLaneIds).includes(activeLaneId) ? index : -1)
+      .filter((index) => index >= 0);
+    const previousLaneIndex = previousLaneIndexes.length === 1 ? previousLaneIndexes[0] : -1;
+    const nextLaneIds = list(activeLane.nextLaneIds);
+    const nextLaneIndex = nextLaneIds.length === 1
+      ? lanesData.findIndex((candidate, index) => (candidate.id || `lane-${index + 1}`) === nextLaneIds[0])
+      : -1;
+    const canMoveToPreviousLane = lane.index === 0 && previousLaneIndex >= 0;
+    const canMoveToNextLane = lane.index >= lane.length - 1 && nextLaneIndex >= 0;
     const controls = createElement("div", "trace-controls");
-    const previous = createElement("button", "control-button", "← 이전 단계");
+    const previousLabel = canMoveToPreviousLane
+      ? `← 이전 경로 · ${lanesData[previousLaneIndex].label || `경로 ${previousLaneIndex + 1}`}`
+      : "← 이전 단계";
+    const previous = createElement("button", "control-button", previousLabel);
     previous.type = "button";
     previous.dataset.focusKey = "previous";
-    previous.disabled = lane.index === 0 || lane.length === 0;
+    previous.disabled = lane.length === 0 || (lane.index === 0 && !canMoveToPreviousLane);
     previous.addEventListener("click", () => {
-      state.stepIndex = Math.max(lane.start, state.stepIndex - 1);
-      render({ focusKey: state.stepIndex === lane.start ? "next-step" : "previous" });
+      if (canMoveToPreviousLane) {
+        const previousStart = laneStartIndex(diagram, previousLaneIndex);
+        state.stepIndex = previousStart + Math.max(list(lanesData[previousLaneIndex].steps).length - 1, 0);
+      } else {
+        state.stepIndex = Math.max(lane.start, state.stepIndex - 1);
+      }
+      render({ focusKey: `diagram-step-${state.stepIndex}` });
     });
     const progressWrap = createElement("div", "trace-progress");
     const progress = createElement("progress", "trace-progress__bar");
@@ -656,25 +886,58 @@
     progress.value = lane.length ? lane.index + 1 : 0;
     progress.setAttribute("aria-label", `${lane.label}, 현재 단계 ${lane.length ? lane.index + 1 : 0} / ${lane.length}`);
     progressWrap.append(progress, createElement("span", "trace-progress__text", `${lane.label} · ${lane.length ? lane.index + 1 : 0} / ${lane.length}`));
-    const next = createElement("button", "control-button", "다음 단계 →");
+    const nextLabel = canMoveToNextLane
+      ? `다음 경로 · ${lanesData[nextLaneIndex].label || `경로 ${nextLaneIndex + 1}`} →`
+      : nextLaneIds.length > 1 && lane.index >= lane.length - 1
+        ? "다른 경로를 선택하세요"
+        : "다음 단계 →";
+    const next = createElement("button", "control-button", nextLabel);
     next.type = "button";
     next.dataset.focusKey = "next-step";
-    next.disabled = lane.index >= lane.length - 1 || lane.length === 0;
+    next.disabled = lane.length === 0 || (lane.index >= lane.length - 1 && !canMoveToNextLane);
     next.addEventListener("click", () => {
-      state.stepIndex = Math.min(lane.end, state.stepIndex + 1);
-      render({ focusKey: state.stepIndex === lane.end ? "previous" : "next-step" });
+      if (canMoveToNextLane) {
+        state.stepIndex = laneStartIndex(diagram, nextLaneIndex);
+      } else {
+        state.stepIndex = Math.min(lane.end, state.stepIndex + 1);
+      }
+      render({ focusKey: `diagram-step-${state.stepIndex}` });
     });
     controls.append(previous, progressWrap, next);
     board.appendChild(controls);
+
+    const stepJump = createElement("nav", "sequence-step-jump");
+    stepJump.setAttribute("aria-label", "현재 경로의 단계 바로 가기");
+    stepJump.appendChild(createElement("p", "sequence-step-jump__title", "다른 단계 바로 보기"));
+    const jumpList = createElement("ol", "sequence-step-jump__list");
+    laneSteps.forEach((step) => {
+      const edgeState = semanticStepState(step._globalIndex);
+      const item = createElement("li", "sequence-step-jump__item");
+      const button = createElement("button", "sequence-step-jump__button", `${step._laneStepIndex + 1}. ${step.from} → ${step.to} · ${step.verb}`);
+      button.type = "button";
+      button.dataset.focusKey = `diagram-step-${step._globalIndex}`;
+      button.setAttribute("aria-label", semanticStepAriaLabel(step, edgeState));
+      if (edgeState === "active") {
+        button.setAttribute("aria-current", "step");
+      }
+      button.addEventListener("click", () => {
+        state.stepIndex = step._globalIndex;
+        render({ focusKey: `diagram-step-${step._globalIndex}` });
+      });
+      item.appendChild(button);
+      jumpList.appendChild(item);
+    });
+    stepJump.appendChild(jumpList);
+    board.appendChild(stepJump);
     figure.appendChild(board);
 
-    if (list(activeLane.steps).length > 7) {
-      figure.appendChild(createElement("p", "story-limit-note", "이 화면은 판단 부담을 줄이기 위해 현재 경로의 처음 7개 전이만 표시합니다."));
+    if (fullLaneSteps.length > 7) {
+      figure.appendChild(createElement("p", "sequence-limit-note", "현재 경로는 첫 7개 전달을 수직 시간선에 표시합니다. 이전·다음 버튼으로 나머지 단계도 확인할 수 있습니다."));
     }
 
     if (list(diagram.notReached).length) {
       const notReached = createElement("aside", "not-reached");
-      notReached.appendChild(createElement("h4", "", "이 조건에서 실행되지 않는 경로"));
+      notReached.appendChild(createElement("h4", "", "여기서 멈춰 실행되지 않은 책임"));
       const items = createElement("ul", "not-reached__list");
       list(diagram.notReached).forEach((item) => {
         const row = createElement("li", "not-reached__item");
@@ -704,7 +967,7 @@
     const caption = createElement("figcaption", "topic-visual__caption");
     caption.append(
       createElement("strong", "", visual.caption || image.alt),
-      createElement("span", "", "저장소 로컬 SVG · A&I Backend Visual Lab")
+      createElement("span", "", "관계를 먼저 읽고, 아래에서 한 단계씩 확인합니다.")
     );
     const viewport = createElement("div", "topic-visual__viewport");
     viewport.appendChild(image);
@@ -737,11 +1000,11 @@
     const revealed = isScenarioRevealed(scenario);
     const panel = createElement("section", "prediction-panel");
     const headingId = `prediction-${key}`;
-    const heading = createElement("h4", "", revealed ? "내 예상과 실제 경로 비교" : "경로를 보기 전에 먼저 예상하세요");
+    const heading = createElement("h4", "", revealed ? "내 예상과 실제 흐름 비교" : "실제 흐름을 보기 전에 예상해보세요");
     heading.id = headingId;
     panel.setAttribute("aria-labelledby", headingId);
     panel.append(
-      createElement("p", "prediction-panel__step", revealed ? "PREDICT → OBSERVE" : "PREDICT 01"),
+      createElement("p", "prediction-panel__step", revealed ? "내 예상과 실제 흐름" : "내 예상"),
       heading,
       createElement("p", "prediction-panel__prompt", prediction.prompt || "이 조건에서 요청은 어디까지 도달하고 무엇이 남을까요?")
     );
@@ -786,13 +1049,13 @@
       const result = createElement("div", "prediction-result");
       result.dataset.correct = String(selectedId === prediction.answer);
       result.append(
-        createElement("strong", "", selectedId === prediction.answer ? "예상과 경로가 일치합니다" : "예상과 다른 지점을 찾아보세요"),
+        createElement("strong", "", selectedId === prediction.answer ? "내 예상과 같은 경로였습니다" : "실제 흐름은 다른 경로였습니다"),
         createElement("p", "", selected ? `내 예상: ${selected.label}` : "선택한 예상이 없습니다."),
         createElement("p", "", prediction.explanation || "아래 경로에서 요청이 멈추거나 상태가 바뀌는 지점을 확인하세요.")
       );
       panel.appendChild(result);
     } else {
-      const reveal = createElement("button", "prediction-panel__reveal", "예상 확정 · 경로 보기 →");
+      const reveal = createElement("button", "prediction-panel__reveal", "실제 전달 순서 보기 →");
       reveal.type = "button";
       reveal.dataset.focusKey = "reveal";
       reveal.disabled = !selectedId;
@@ -801,7 +1064,7 @@
           return;
         }
         state.revealedScenarios.add(key);
-        render({ focusKey: `diagram-step-${state.stepIndex}` });
+        render({ focusKey: semanticDiagram(scenario) ? `diagram-step-${state.stepIndex}` : `route-${state.stepIndex}` });
       });
       panel.appendChild(reveal);
     }
@@ -823,6 +1086,35 @@
       grid.appendChild(article);
     });
     section.appendChild(grid);
+    return section;
+  }
+
+  function renderReflection(scenario) {
+    const key = scenarioKey(scenario);
+    const declared = scenario.reflection;
+    const config = typeof declared === "string"
+      ? { prompt: declared }
+      : declared && typeof declared === "object"
+        ? declared
+        : {};
+    const section = createElement("section", "scenario-reflection");
+    const inputId = `reflection-${key}`;
+    section.append(
+      createElement("h4", "", config.title || "내 말로 정리하기"),
+      createElement("p", "", config.prompt || "이 조건에서 다음 책임으로 넘어가거나 멈춘 이유를 한 문장으로 적어보세요.")
+    );
+    appendText(section, "p", "scenario-reflection__hint", config.hint);
+    const label = createElement("label", "scenario-reflection__label", config.label || "관찰 뒤 바뀐 생각");
+    label.htmlFor = inputId;
+    const textarea = createElement("textarea", "scenario-reflection__input");
+    textarea.id = inputId;
+    textarea.rows = 3;
+    textarea.placeholder = config.placeholder || (config.hint ? "" : "예: Request DTO는 Service 안에서 Entity로 바뀐 뒤 Repository로 전달된다.");
+    textarea.value = state.reflections.get(key) || "";
+    textarea.addEventListener("input", () => {
+      state.reflections.set(key, textarea.value);
+    });
+    section.append(label, textarea, createElement("p", "scenario-reflection__note", "이 내용은 현재 페이지를 보는 동안만 유지됩니다."));
     return section;
   }
 
@@ -947,7 +1239,7 @@
 
     if (!diagram && list(scenario.fanOut).length) {
       const fanOut = createElement("div", "fanout-board");
-      fanOut.appendChild(createElement("p", "fanout-board__label", "Broadcast recipients"));
+      fanOut.appendChild(createElement("p", "fanout-board__label", "메시지를 받는 구독자"));
       const recipients = createElement("div", "fanout-board__recipients");
       list(scenario.fanOut).forEach((recipient) => recipients.appendChild(createElement("span", "fanout-recipient", recipient)));
       fanOut.appendChild(recipients);
@@ -975,6 +1267,7 @@
     if (comparison) {
       stage.appendChild(comparison);
     }
+    stage.appendChild(renderReflection(scenario));
     const selectedStep = currentStep(sequence);
     const statusMessage = selectedStep._laneId
       ? `${scenario.label || "현재 조건"}, ${selectedStep._laneLabel}, ${selectedStep.from}에서 ${selectedStep.to}로 ${selectedStep.verb}: ${selectedStep.payload}`
@@ -987,18 +1280,31 @@
   function renderCodePoint(point) {
     const article = createElement("article", "code-evidence");
     const header = createElement("header", "code-evidence__header");
-    header.append(
-      createElement("h3", "", point.title || "코드 포인트"),
-      createElement("code", "file-path", point.file || "파일 경로 확인")
-    );
+    header.appendChild(createElement("h3", "", point.title || "이 단계에서 볼 코드"));
+    appendText(header, "p", "code-evidence__intro", point.comment || point.explanation || point.body || "이 단계에서 책임이 바뀌는 코드를 먼저 읽습니다.");
     article.appendChild(header);
     if (point.snippet || point.example) {
       const pre = createElement("pre", "code-block");
       pre.appendChild(createElement("code", "", point.snippet || point.example));
       article.appendChild(pre);
     }
-    appendText(article, "p", "code-explanation", point.explanation || point.body);
-    appendText(article, "p", "code-check", point.check ? `확인: ${point.check}` : "");
+    const stateChange = point.stateChange || point.after || point.check;
+    if (stateChange) {
+      const change = createElement("div", "code-state-change");
+      change.append(
+        createElement("strong", "", point.stateChange || point.after ? "코드 뒤에 달라지는 것" : "이 코드 뒤에 확인할 것"),
+        createElement("p", "", stateChange)
+      );
+      article.appendChild(change);
+    }
+    if (point.file) {
+      const location = createElement("details", "code-location");
+      location.append(
+        createElement("summary", "", "전체 코드 위치"),
+        createElement("code", "", point.file)
+      );
+      article.appendChild(location);
+    }
     if (point.sourceUrl) {
       const source = makeLink("이 코드 위치 열기 ↗", point.sourceUrl, "text-link");
       source.target = "_blank";
@@ -1015,8 +1321,8 @@
     section.id = "evidence";
     const heading = createElement("header", "section-heading");
     heading.append(
-      createElement("p", "eyebrow", "Selected evidence"),
-      createElement("h2", "", "선택한 단계의 개념과 코드"),
+      createElement("p", "eyebrow", "이 단계에서 확인할 근거"),
+      createElement("h2", "", "현재 전달을 코드와 연결하기"),
       createElement("p", "section-lede", "현재 경로에서 무엇을 관찰했고 어느 책임을 확인해야 하는지 연결합니다.")
     );
     section.appendChild(heading);
@@ -1036,25 +1342,15 @@
     const layout = createElement("div", "evidence-layout");
     const primary = createElement("article", "step-evidence");
     const stepMeta = step._laneId
-      ? `${step._laneLabel} · Step ${step._laneStepIndex + 1} / ${step._laneStepCount}`
-      : `Step ${currentSteps(sequence).length ? state.stepIndex + 1 : 0}`;
+      ? `${step._laneLabel} · 단계 ${step._laneStepIndex + 1} / ${step._laneStepCount}`
+      : `단계 ${currentSteps(sequence).length ? state.stepIndex + 1 : 0}`;
+    const evidenceScope = evidenceScopeLabels[step.evidenceScope] || evidenceScopeLabels.manual;
     primary.append(
       createElement("p", "step-evidence__meta", stepMeta),
-      createElement("h3", "", step.action || step.message || step.owner || "단계 정보를 확인하세요.")
+      createElement("h3", "", `${evidenceScope}할 지점`),
+      createElement("p", "step-evidence__check", step.check || step.output || "이 단계의 입력과 출력 근거를 확인하세요.")
     );
     appendText(primary, "p", "step-note", step.note);
-    const fields = createElement("dl", "evidence-fields");
-    [
-      ["관찰", step.problem || step.input],
-      ["개념", step.concept || step.owner],
-      ["행동", step.action || step.message],
-      ["확인", step.check || step.output],
-    ].forEach(([label, value]) => {
-      const field = createElement("div", "evidence-field");
-      field.append(createElement("dt", "", label), createElement("dd", "", value || "이 단계의 데이터를 확인하세요."));
-      fields.appendChild(field);
-    });
-    primary.appendChild(fields);
 
     const context = createElement("aside", "context-drawer");
     context.appendChild(createElement("h3", "", "책임과 개념"));
@@ -1123,8 +1419,8 @@
     const checks = list(sequence.checks).length ? sequence.checks : list(sequence.practice);
     const heading = createElement("header", "section-heading");
     heading.append(
-      createElement("p", "eyebrow", "Verification"),
-      createElement("h2", "", "말로 설명할 수 있는지 확인하세요"),
+      createElement("p", "eyebrow", "내 말로 설명해 보기"),
+      createElement("h2", "", "흐름을 설명할 수 있는지 확인하세요"),
       createElement("p", "section-lede", "체크 상태는 현재 페이지에서만 유지되며 정답을 대신하지 않습니다.")
     );
     section.appendChild(heading);
@@ -1178,7 +1474,7 @@
     section.id = "next";
     const copy = createElement("div", "next-question__copy");
     copy.append(
-      createElement("p", "eyebrow", "Next question"),
+      createElement("p", "eyebrow", "다음에 이어서 볼 것"),
       createElement("h2", "", nextData.id && nextData.title ? `${nextData.id} ${nextData.title}` : "다음 학습으로 연결"),
       createElement("p", "", nextData.reason || "이번 흐름의 확인 질문을 마치고 다음 시퀀스로 이동하세요.")
     );
@@ -1266,7 +1562,8 @@
 
     if (focusKey) {
       window.requestAnimationFrame(() => {
-        const target = document.querySelector(`[data-focus-key="${focusKey}"]`);
+        const targets = [...document.querySelectorAll(`[data-focus-key="${focusKey}"]`)];
+        const target = targets.find((item) => item.offsetParent !== null) || targets[0];
         if (target && !target.disabled) {
           target.focus();
         }

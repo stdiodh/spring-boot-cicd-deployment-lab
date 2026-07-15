@@ -7,7 +7,7 @@ window.visualLabData = {
   "problem": "로컬에서 `bootRun`으로만 실행한 애플리케이션은 운영 서버에서 같은 조건으로 재현되기 어렵습니다.",
   "workbench": {
     "kind": "runtime",
-    "title": "Runtime Boundary",
+    "title": "소스가 실행 프로세스가 되는 과정",
     "instruction": "실행 조건을 바꿔 jar, image, container, 설정, 로그 중 어디까지 도달하는지 확인하세요.",
     "visual": {
       "src": "../../assets/diagrams/09-runtime-nesting.svg",
@@ -77,6 +77,16 @@ window.visualLabData = {
         "boundary": "Image build",
         "codePointIds": [
           "dockerfile-jar"
+        ]
+      },
+      "dockerignore": {
+        "label": ".dockerignore",
+        "icon": "config",
+        "kind": "build context filter",
+        "role": "Docker builder에 보낼 파일과 제외할 경로 결정",
+        "boundary": "Image build",
+        "codePointIds": [
+          "dockerignore-build-context"
         ]
       },
       "docker-builder": {
@@ -156,16 +166,22 @@ window.visualLabData = {
         "icon": "evidence",
         "kind": "observation",
         "role": "container 상태와 애플리케이션 로그",
-        "boundary": "Verification"
+        "boundary": "실행 확인 경계"
       }
     },
     "scenarios": [
       {
         "id": "runtime-ready",
-        "label": "jar·image 준비됨",
+        "label": ".dockerignore 조정 뒤 image 준비",
         "flowId": "jar-to-container",
         "tone": "recovered",
-        "prompt": "테스트를 통과한 jar와 Docker image가 준비되었습니다. 운영 실행을 판단할 다음 증거를 예측합니다.",
+        "prompt": "`.dockerignore`가 jar를 build context에 포함하도록 조정되어 테스트를 통과한 jar와 Docker image가 준비됐다고 가정합니다. 운영 실행을 판단할 다음 증거를 예측합니다.",
+        "observationTitle": "jar와 image가 container·process·runtime evidence로 이어지는 경로",
+        "theoryRef": "../../../theory.md#seq-09",
+        "reflection": {
+          "prompt": "image 생성과 서비스 실행 성공 사이에 필요한 상태를 순서대로 적어보세요.",
+          "hint": "container 생성, Spring process 시작, ps·log·health 증거를 구분하세요."
+        },
         "prediction": {
           "prompt": "어디까지 확인해야 ‘운영에서 실행됐다’고 판단할 수 있을까요?",
           "options": [
@@ -181,7 +197,7 @@ window.visualLabData = {
           "./gradlew test bootJar",
           "build/libs/*.jar",
           "Dockerfile",
-          "Docker image",
+          "Docker image · tag :latest",
           "Container",
           "docker compose ps · logs"
         ],
@@ -190,7 +206,7 @@ window.visualLabData = {
           "lanes": [
             {
               "id": "build-image",
-              "label": "Build time → Image artifact",
+              "label": "소스 검증 → image artifact",
               "description": "실행 파일과 image 설계서를 입력으로 아직 실행되지 않은 image를 만듭니다.",
               "steps": [
                 {
@@ -199,14 +215,28 @@ window.visualLabData = {
                   "verb": "검증 실행",
                   "payload": "./gradlew test",
                   "kind": "request",
-                  "concept": "배포 전 검증 gate"
+                  "concept": "배포 전 검증 gate",
+                  "effect": {
+                    "kind": "verify",
+                    "subject": "Gradle test gate",
+                    "before": "아직 `./gradlew test`의 pass·fail 값이 없음",
+                    "after": "Gradle이 test task를 실행해 통과 또는 첫 실패를 기록함"
+                  },
+                  "evidenceScope": "test"
                 },
                 {
                   "from": "gradle-test",
                   "to": "gradle-build",
                   "verb": "통과 후 빌드",
                   "payload": "./gradlew bootJar",
-                  "kind": "call"
+                  "kind": "call",
+                  "effect": {
+                    "kind": "gate",
+                    "subject": "bootJar gate",
+                    "before": "test task가 통과하기 전이라 jar 생성은 닫혀 있음",
+                    "after": "test exit code 0 뒤 `bootJar` task가 시작됨"
+                  },
+                  "evidenceScope": "test"
                 },
                 {
                   "from": "gradle-build",
@@ -216,7 +246,14 @@ window.visualLabData = {
                   "kind": "transform",
                   "codePointIds": [
                     "dockerfile-jar"
-                  ]
+                  ],
+                  "effect": {
+                    "kind": "transform",
+                    "subject": "executable jar",
+                    "before": "`build/libs`에 이번 source의 실행 jar가 없음",
+                    "after": "`bootJar`가 `build/libs/*.jar`를 생성함"
+                  },
+                  "evidenceScope": "manual"
                 },
                 {
                   "from": "dockerfile",
@@ -226,14 +263,28 @@ window.visualLabData = {
                   "kind": "config",
                   "codePointIds": [
                     "dockerfile-jar"
-                  ]
+                  ],
+                  "effect": {
+                    "kind": "transfer",
+                    "subject": "Dockerfile rule",
+                    "before": "Docker builder는 jar source와 실행 명령을 모름",
+                    "after": "`COPY ${JAR_FILE} app.jar`와 ENTRYPOINT가 builder에 적용됨"
+                  },
+                  "evidenceScope": "code"
                 },
                 {
                   "from": "application-jar",
                   "to": "docker-builder",
                   "verb": "패키징 입력",
                   "payload": "executable jar",
-                  "kind": "transform"
+                  "kind": "transform",
+                  "effect": {
+                    "kind": "transfer",
+                    "subject": "executable jar",
+                    "before": "jar는 host의 `build/libs`에만 존재함",
+                    "after": "Docker build context에서 jar가 `COPY` 입력으로 선택됨"
+                  },
+                  "evidenceScope": "manual"
                 },
                 {
                   "from": "docker-builder",
@@ -241,13 +292,20 @@ window.visualLabData = {
                   "verb": "image 생성",
                   "payload": "tagged image artifact",
                   "kind": "transform",
-                  "check": "image는 아직 실행 중인 process가 아닙니다."
+                  "check": "image는 아직 실행 중인 process가 아닙니다.",
+                  "effect": {
+                    "kind": "transform",
+                    "subject": "Docker image",
+                    "before": "builder에 jar layer와 ENTRYPOINT 정의가 모여 있음",
+                    "after": "tagged image에 `/app/app.jar`와 Java 실행 명령이 고정됨"
+                  },
+                  "evidenceScope": "manual"
                 }
               ]
             },
             {
               "id": "image-runtime",
-              "label": "Image artifact → Runtime",
+              "label": "image artifact → 실행 프로세스",
               "description": "runtime이 image로 container를 만들고 그 안에서 애플리케이션 process를 실행합니다.",
               "steps": [
                 {
@@ -255,21 +313,42 @@ window.visualLabData = {
                   "to": "compose-runtime",
                   "verb": "실행 대상으로 선택",
                   "payload": "image tag",
-                  "kind": "config"
+                  "kind": "config",
+                  "effect": {
+                    "kind": "transfer",
+                    "subject": "image tag",
+                    "before": "Compose app service에 실행 image instance가 없음",
+                    "after": "Compose가 지정된 image tag를 app service 원본으로 선택함"
+                  },
+                  "evidenceScope": "manual"
                 },
                 {
                   "from": "compose-runtime",
                   "to": "container",
                   "verb": "instance 생성",
-                  "payload": "docker compose up -d",
-                  "kind": "call"
+                  "payload": "docker compose --env-file .env -f deploy/compose.prod.yaml up -d",
+                  "kind": "call",
+                  "effect": {
+                    "kind": "transform",
+                    "subject": "container instance",
+                    "before": "Docker image는 실행 전 artifact 상태",
+                    "after": "운영 Compose가 `:latest` image와 `.env`로 app container instance 생성을 시도함"
+                  },
+                  "evidenceScope": "manual"
                 },
                 {
                   "from": "container",
                   "to": "spring-process",
                   "verb": "ENTRYPOINT 실행",
                   "payload": "java -jar /app/app.jar",
-                  "kind": "call"
+                  "kind": "call",
+                  "effect": {
+                    "kind": "transform",
+                    "subject": "Spring process",
+                    "before": "container filesystem에 `/app/app.jar`만 준비됨",
+                    "after": "PID 1에서 `java -jar /app/app.jar`가 시작됨"
+                  },
+                  "evidenceScope": "runtime"
                 },
                 {
                   "from": "spring-process",
@@ -277,7 +356,14 @@ window.visualLabData = {
                   "verb": "상태와 로그 출력",
                   "payload": "docker compose ps + application logs",
                   "kind": "response",
-                  "check": "container 상태와 애플리케이션 로그를 함께 확인합니다."
+                  "check": "container 상태와 애플리케이션 로그를 함께 확인합니다.",
+                  "effect": {
+                    "kind": "verify",
+                    "subject": "runtime evidence",
+                    "before": "container 생성만 확인됐고 Spring ready 여부는 모름",
+                    "after": "`compose ps`와 startup log가 process 상태와 첫 실패 지점을 보여줌"
+                  },
+                  "evidenceScope": "runtime"
                 }
               ]
             }
@@ -295,7 +381,7 @@ window.visualLabData = {
             "tone": "signal"
           }
         ],
-        "evidence": "bootJar 산출물 경로와 Dockerfile의 COPY 경로가 일치하고, 컨테이너 상태와 애플리케이션 로그가 확인됩니다.",
+        "evidence": "`.dockerignore` 조정 뒤 bootJar 산출물이 build context에 포함되고, 같은 `:latest` tag를 쓰는 운영 Compose에서 컨테이너 상태와 애플리케이션 로그를 확인해야 합니다.",
         "outcome": "빌드 산출물과 runtime 증거가 모두 연결되어야 실행 성공으로 판단합니다."
       },
       {
@@ -304,6 +390,12 @@ window.visualLabData = {
         "flowId": "jar-to-container",
         "tone": "blocked",
         "prompt": "배포 전 `./gradlew test`가 실패했습니다. image나 container로 범위를 넓히기 전에 어떤 증거를 볼지 예측합니다.",
+        "observationTitle": "첫 build gate에서 jar와 image 생성 전에 멈추는 경로",
+        "theoryRef": "../../../theory.md#seq-09",
+        "reflection": {
+          "prompt": "테스트 실패가 뒤의 artifact와 runtime 단계에 어떤 영향을 주는지 적어보세요.",
+          "hint": "test 실패 뒤에는 bootJar, image, container가 아직 만들어지지 않습니다."
+        },
         "prediction": {
           "prompt": "테스트 실패 뒤 가장 먼저 확인할 경계는 어디일까요?",
           "options": [
@@ -326,7 +418,7 @@ window.visualLabData = {
           "lanes": [
             {
               "id": "build-gate",
-              "label": "Build verification gate",
+              "label": "테스트 → build gate",
               "description": "jar 생성보다 먼저 현재 동작의 실패를 확인합니다.",
               "steps": [
                 {
@@ -334,7 +426,14 @@ window.visualLabData = {
                   "to": "gradle-test",
                   "verb": "검증 실행",
                   "payload": "./gradlew test",
-                  "kind": "request"
+                  "kind": "request",
+                  "effect": {
+                    "kind": "verify",
+                    "subject": "Gradle test gate",
+                    "before": "아직 `./gradlew test`의 pass·fail 값이 없음",
+                    "after": "Gradle이 test task를 실행해 통과 또는 첫 실패를 기록함"
+                  },
+                  "evidenceScope": "test"
                 },
                 {
                   "from": "gradle-test",
@@ -342,7 +441,14 @@ window.visualLabData = {
                   "verb": "첫 실패 기록",
                   "payload": "failing test result",
                   "kind": "failure",
-                  "check": "실패한 테스트 이름과 assertion을 먼저 확인합니다."
+                  "check": "실패한 테스트 이름과 assertion을 먼저 확인합니다.",
+                  "effect": {
+                    "kind": "gate",
+                    "subject": "test failure",
+                    "before": "Gradle test에서 failing test가 발생함",
+                    "after": "build가 test task에서 멈춰 jar·image·container가 생기지 않음"
+                  },
+                  "evidenceScope": "test"
                 }
               ]
             }
@@ -376,10 +482,16 @@ window.visualLabData = {
       },
       {
         "id": "runtime-copy-mismatch",
-        "label": "jar 경로 불일치",
+        "label": ".dockerignore가 jar 제외",
         "flowId": "jar-to-container",
         "tone": "blocked",
-        "prompt": "bootJar 결과와 Dockerfile의 COPY 경로가 다를 때 build 경계를 추적합니다.",
+        "prompt": "bootJar는 `build/libs/*.jar`를 만들었지만 현재 `.dockerignore`가 `build` 전체를 제외합니다. image build의 첫 실패 경계를 추적합니다.",
+        "observationTitle": "jar가 build context에서 제외되어 image가 생기지 않는 경로",
+        "theoryRef": "../../../theory.md#seq-09",
+        "reflection": {
+          "prompt": "jar 존재와 image 생성 성공이 왜 다른 증거인지 적어보세요.",
+          "hint": "파일이 host에 있어도 Docker build context에서 제외되면 COPY source로 사용할 수 없습니다."
+        },
         "prediction": {
           "prompt": "이 조건에서 실제로 도달하지 못한 첫 실행 단위는 무엇일까요?",
           "options": [
@@ -388,22 +500,23 @@ window.visualLabData = {
             { "id": "process", "label": "Spring Boot process 시작" }
           ],
           "answer": "image",
-          "explanation": "jar는 존재하지만 COPY 입력 경로가 맞지 않아 image build에서 멈춥니다. runtime 문제로 확대하면 안 됩니다."
+          "explanation": "jar는 존재하지만 `.dockerignore` 때문에 build context에 없어서 image build에서 멈춥니다. runtime 문제로 확대하면 안 됩니다."
         },
         "route": [
           "./gradlew bootJar",
           "build/libs/*.jar",
           "Dockerfile COPY",
+          ".dockerignore · build 제외",
           "Docker image",
           "Container"
         ],
         "diagram": {
-          "caption": "jar는 생성됐지만 Dockerfile의 COPY source와 맞지 않아 image 생성 경계에서 멈춥니다.",
+          "caption": "jar는 host에 생성됐지만 `.dockerignore`의 `build` 규칙 때문에 build context에서 제외되어 image 생성 경계에서 멈춥니다.",
           "lanes": [
             {
               "id": "copy-boundary",
-              "label": "Jar artifact → Image build",
-              "description": "실제 jar 경로와 Dockerfile이 요구하는 source 경로를 비교합니다.",
+              "label": "jar artifact → image build",
+              "description": "jar의 host 경로, Dockerfile COPY source, `.dockerignore`의 build context 포함 여부를 함께 비교합니다.",
               "steps": [
                 {
                   "from": "gradle-build",
@@ -413,7 +526,14 @@ window.visualLabData = {
                   "kind": "transform",
                   "codePointIds": [
                     "dockerfile-jar"
-                  ]
+                  ],
+                  "effect": {
+                    "kind": "transform",
+                    "subject": "executable jar",
+                    "before": "`build/libs`에 이번 source의 실행 jar가 없음",
+                    "after": "`bootJar`가 `build/libs/*.jar`를 생성함"
+                  },
+                  "evidenceScope": "manual"
                 },
                 {
                   "from": "dockerfile",
@@ -423,22 +543,60 @@ window.visualLabData = {
                   "kind": "config",
                   "codePointIds": [
                     "dockerfile-jar"
-                  ]
+                  ],
+                  "effect": {
+                    "kind": "transfer",
+                    "subject": "COPY source",
+                    "before": "Dockerfile이 jar 위치를 아직 build context와 대조하지 않음",
+                    "after": "`${JAR_FILE}` pattern이 builder의 source path로 설정됨"
+                  },
+                  "evidenceScope": "code"
+                },
+                {
+                  "from": "dockerignore",
+                  "to": "docker-builder",
+                  "verb": "build context 필터 적용",
+                  "payload": "`.dockerignore` line: build",
+                  "kind": "config",
+                  "codePointIds": [
+                    "dockerignore-build-context"
+                  ],
+                  "effect": {
+                    "kind": "gate",
+                    "subject": "Docker build context",
+                    "before": "host의 `build/libs/*.jar`를 builder에 보낼지 아직 결정되지 않음",
+                    "after": "`.dockerignore`의 `build` 규칙이 jar directory를 context에서 제외함"
+                  },
+                  "evidenceScope": "code"
                 },
                 {
                   "from": "application-jar",
                   "to": "docker-builder",
                   "verb": "COPY 시도",
-                  "payload": "actual jar path",
-                  "kind": "transform"
+                  "payload": "build/libs/*.jar · ignored by build rule",
+                  "kind": "transform",
+                  "effect": {
+                    "kind": "transfer",
+                    "subject": "jar path",
+                    "before": "host에는 jar가 있지만 `.dockerignore`가 `build` directory를 제외함",
+                    "after": "builder가 COPY pattern과 일치하는 jar를 build context에서 찾지 못함"
+                  },
+                  "evidenceScope": "manual"
                 },
                 {
                   "from": "docker-builder",
                   "to": "image-build-failure",
-                  "verb": "경로 불일치로 중단",
+                  "verb": "context 제외로 중단",
                   "payload": "COPY source not found",
                   "kind": "failure",
-                  "check": "jar 산출물 경로와 COPY source를 먼저 비교합니다."
+                  "check": "jar 산출물 경로, COPY source, `.dockerignore` 규칙을 함께 비교합니다.",
+                  "effect": {
+                    "kind": "gate",
+                    "subject": "image build",
+                    "before": "Docker build context에 `build/libs/*.jar`가 포함되지 않음",
+                    "after": "`COPY source not found`에서 image layer 생성이 중단됨"
+                  },
+                  "evidenceScope": "manual"
                 }
               ]
             }
@@ -457,7 +615,7 @@ window.visualLabData = {
         "snapshot": [
           {
             "label": "Docker build",
-            "value": "jar COPY 경로 불일치",
+            "value": "build context에서 jar 제외",
             "tone": "blocked"
           },
           {
@@ -466,8 +624,8 @@ window.visualLabData = {
             "tone": "blocked"
           }
         ],
-        "evidence": "문서의 실패 확인 순서는 jar 산출물 경로와 Dockerfile의 `COPY` 경로를 먼저 비교하도록 안내합니다.",
-        "outcome": "image가 만들어지지 않았으므로 container 실행 문제로 해석하지 않습니다.",
+        "evidence": "`sed -n '1,120p' .dockerignore` 출력에서 `build` 규칙을 직접 읽고, 이어진 Docker build의 `COPY source not found`를 같은 build-context 경계로 연결합니다.",
+        "outcome": "jar 경로를 unignore하거나 build 제외 정책을 조정하기 전에는 image와 app container 성공을 주장하지 않습니다.",
         "stopAfter": 2
       },
       {
@@ -476,6 +634,12 @@ window.visualLabData = {
         "flowId": "runtime-config",
         "tone": "blocked",
         "prompt": "prod profile이 요구하는 환경변수가 빠졌을 때 실행과 health 증거를 구분합니다.",
+        "observationTitle": "container 실행 입력은 생겼지만 Spring process가 설정에서 멈추는 경로",
+        "theoryRef": "../../../theory.md#seq-09",
+        "reflection": {
+          "prompt": "compose 명령 종료와 애플리케이션 정상 실행을 구분해 적어보세요.",
+          "hint": "startup log와 health 증거가 없으면 container 명령만으로 성공이 아닙니다."
+        },
         "prediction": {
           "prompt": "container 명령이 끝났다면 배포가 정상이라고 볼 수 있을까요?",
           "options": [
@@ -499,7 +663,7 @@ window.visualLabData = {
           "lanes": [
             {
               "id": "runtime-config-boundary",
-              "label": "Runtime configuration",
+              "label": "실행 설정 → process 시작",
               "description": "환경 설정은 source나 image가 아니라 container 실행 시점에 전달됩니다.",
               "steps": [
                 {
@@ -510,21 +674,42 @@ window.visualLabData = {
                   "kind": "config",
                   "codePointIds": [
                     "prod-env"
-                  ]
+                  ],
+                  "effect": {
+                    "kind": "transfer",
+                    "subject": "runtime environment",
+                    "before": "필수 DB·Redis·JWT 환경 값 중 일부가 비어 있음",
+                    "after": "누락을 포함한 environment map이 Compose app service에 적용됨"
+                  },
+                  "evidenceScope": "runtime"
                 },
                 {
                   "from": "compose-runtime",
                   "to": "container",
                   "verb": "환경과 image 전달",
                   "payload": "compose runtime config",
-                  "kind": "config"
+                  "kind": "config",
+                  "effect": {
+                    "kind": "transfer",
+                    "subject": "container runtime input",
+                    "before": "Compose에 image tag와 environment map이 따로 있음",
+                    "after": "container에 image filesystem과 환경 값이 함께 주입됨"
+                  },
+                  "evidenceScope": "runtime"
                 },
                 {
                   "from": "container",
                   "to": "spring-process",
                   "verb": "process 실행",
                   "payload": "prod profile",
-                  "kind": "call"
+                  "kind": "call",
+                  "effect": {
+                    "kind": "transform",
+                    "subject": "Spring process",
+                    "before": "container는 created 상태지만 Spring application은 없음",
+                    "after": "prod profile로 JVM process가 시작됨"
+                  },
+                  "evidenceScope": "runtime"
                 },
                 {
                   "from": "prod-profile",
@@ -534,7 +719,14 @@ window.visualLabData = {
                   "kind": "config",
                   "codePointIds": [
                     "prod-env"
-                  ]
+                  ],
+                  "effect": {
+                    "kind": "transform",
+                    "subject": "prod profile config",
+                    "before": "`${ENV_NAME}` placeholder 중 일부에 대응 값이 없음",
+                    "after": "Spring Environment가 주입된 key를 `application-prod.yaml`에 바인딩함"
+                  },
+                  "evidenceScope": "code"
                 },
                 {
                   "from": "spring-process",
@@ -542,7 +734,14 @@ window.visualLabData = {
                   "verb": "시작 실패 기록",
                   "payload": "missing configuration log",
                   "kind": "failure",
-                  "check": "환경 변수 이름과 startup log를 확인하며 값 자체는 노출하지 않습니다."
+                  "check": "환경 변수 이름과 startup log를 확인하며 값 자체는 노출하지 않습니다.",
+                  "effect": {
+                    "kind": "gate",
+                    "subject": "Spring startup",
+                    "before": "필수 설정이 없어 application context를 완성할 수 없음",
+                    "after": "startup log에 missing configuration이 남고 ready 상태에 도달하지 못함"
+                  },
+                  "evidenceScope": "runtime"
                 }
               ]
             }
@@ -776,7 +975,7 @@ window.visualLabData = {
           "message": "결과와 실패 지점을 확인합니다.",
           "messageKind": "response",
           "problem": "구현 후 실제로 어느 지점이 통과했는지 확인해야 합니다.",
-          "concept": "Verification",
+          "concept": "실행 결과 검증",
           "action": "문서의 확인 명령이나 화면에서 결과를 검증합니다.",
           "check": "성공 흐름과 실패 흐름을 말로 설명합니다.",
           "note": "Visual Lab은 코드를 대신 완성하지 않고 확인 지점을 고정합니다.",
@@ -845,17 +1044,26 @@ window.visualLabData = {
       "file": "Dockerfile",
       "language": "dockerfile",
       "snippet": "FROM eclipse-temurin:21-jre\n\nWORKDIR /app\n\nARG JAR_FILE=build/libs/*.jar\nCOPY ${JAR_FILE} app.jar\n\nEXPOSE 8080\n\nENTRYPOINT [\"java\", \"-jar\", \"/app/app.jar\"]",
-      "explanation": "로컬 jar 파일을 컨테이너 안의 실행 가능한 app.jar로 복사합니다.",
-      "check": "bootJar 산출물 경로와 Dockerfile COPY 경로가 맞는지 확인합니다."
+      "explanation": "완성 가이드의 Dockerfile 목표입니다. 실습 시작 파일의 TODO를 채워도 현재 `.dockerignore`가 `build`를 제외하므로 jar를 다시 포함하는 정책이 선행돼야 합니다.",
+      "check": "bootJar 산출물 경로, Dockerfile COPY 경로, `.dockerignore` 포함 여부를 함께 확인합니다."
+    },
+    {
+      "id": "dockerignore-build-context",
+      "title": ".dockerignore의 build 규칙은 jar도 build context에서 제외합니다",
+      "file": ".dockerignore",
+      "language": "text",
+      "snippet": ".git\n.github\n.gradle\nbuild\nout\ndocs\nREADME.md",
+      "explanation": "`build` 한 줄은 directory 전체에 적용되므로 `bootJar`가 만든 `build/libs/*.jar`도 Docker builder에 전달되지 않습니다.",
+      "check": "파일을 직접 읽은 뒤 Docker COPY 실패와 같은 build-context 원인으로 연결합니다."
     },
     {
       "id": "prod-env",
       "title": "운영 설정은 환경변수로 주입합니다",
       "file": "src/main/resources/application-prod.yaml",
       "language": "yaml",
-      "snippet": "spring:\n  datasource:\n    url: ${DB_URL}\n    username: ${DB_USERNAME}\n    password: ${DB_PASSWORD}\n  data:\n    redis:\n      host: ${REDIS_HOST}\n      port: ${REDIS_PORT:6379}\n\njwt:\n  secret: ${JWT_SECRET}\n  expiration-ms: ${JWT_EXPIRATION_MS:3600000}",
-      "explanation": "운영 비밀값은 코드에 쓰지 않고 실행 환경에서 주입합니다.",
-      "check": "실제 secret 값이 repository 파일에 들어가지 않았는지 확인합니다."
+      "snippet": "spring:\n  datasource:\n    url: ${DB_URL}\n    username: ${DB_USERNAME}\n    password: ${DB_PASSWORD}",
+      "explanation": "완성 가이드의 실제 datasource 환경 변수 연결입니다. 실습 시작 파일에는 이 연결을 채우는 TODO가 남아 있고 실제 값은 `.env`에서 주입합니다.",
+      "check": "DB 값과 같은 방식으로 Redis 등 다른 운영 설정도 환경 변수에 연결되는지 확인합니다."
     }
   ],
   "concepts": [
