@@ -5,6 +5,573 @@ window.visualLabData = {
   "subtitle": "Deployment and runtime environment",
   "goal": "bootJar, Dockerfile, image, container, prod profile, 환경변수, runtime log 흐름을 하나의 실행 단위로 이해합니다.",
   "problem": "로컬에서 `bootRun`으로만 실행한 애플리케이션은 운영 서버에서 같은 조건으로 재현되기 어렵습니다.",
+  "workbench": {
+    "kind": "runtime",
+    "title": "Runtime Boundary",
+    "instruction": "실행 조건을 바꿔 jar, image, container, 설정, 로그 중 어디까지 도달하는지 확인하세요.",
+    "visual": {
+      "src": "../../assets/diagrams/09-runtime-nesting.svg",
+      "alt": "Source code가 jar와 Docker image로 빌드되고 image로부터 container와 Spring Boot process가 순서대로 생성되며 실행 시 환경 설정이 container에 주입되는 구조",
+      "caption": "Source→jar→image는 빌드 경로이고 image→container→process는 실행 경로입니다. 환경 설정은 container 실행 시점에 전달됩니다."
+    },
+    "terms": [
+      { "term": "jar", "meaning": "Spring Boot 코드와 실행에 필요한 파일을 하나로 묶은 실행 파일" },
+      { "term": "image", "meaning": "jar와 실행 환경을 담았지만 아직 실행되지는 않은 배포 패키지" },
+      { "term": "container", "meaning": "image로 만든 실행 중인 격리 단위" },
+      { "term": "process", "meaning": "container 안에서 실제로 동작하는 Spring Boot 프로그램" }
+    ],
+    "comparison": {
+      "label": "실행 전 산출물과 실행 중 인스턴스",
+      "left": {
+        "title": "jar · image",
+        "body": "빌드 시점에 만들어지는 실행 전 산출물입니다. 생성 성공만으로 애플리케이션 정상 실행을 뜻하지 않습니다."
+      },
+      "right": {
+        "title": "container · process",
+        "body": "image에서 생성되어 실제로 동작하는 실행 단위입니다. 상태와 애플리케이션 로그를 증거로 확인합니다."
+      }
+    },
+    "nodes": {
+      "source-code": {
+        "label": "Source code",
+        "icon": "artifact",
+        "kind": "source",
+        "role": "빌드 입력",
+        "boundary": "Source",
+        "codePointIds": [
+          "dockerfile-jar"
+        ]
+      },
+      "gradle-test": {
+        "label": "Gradle test",
+        "icon": "test",
+        "kind": "verification",
+        "role": "jar 생성 전 동작 검증",
+        "boundary": "Build time"
+      },
+      "gradle-build": {
+        "label": "Gradle bootJar",
+        "icon": "tool",
+        "kind": "build tool",
+        "role": "실행 가능한 jar 생성",
+        "boundary": "Build time",
+        "codePointIds": [
+          "dockerfile-jar"
+        ]
+      },
+      "application-jar": {
+        "label": "Executable jar",
+        "icon": "artifact",
+        "kind": "artifact",
+        "role": "운영 실행 산출물",
+        "boundary": "Build artifact",
+        "codePointIds": [
+          "dockerfile-jar"
+        ]
+      },
+      "dockerfile": {
+        "label": "Dockerfile",
+        "icon": "config",
+        "kind": "build recipe",
+        "role": "jar 복사와 Java 실행 명령 정의",
+        "boundary": "Image build",
+        "codePointIds": [
+          "dockerfile-jar"
+        ]
+      },
+      "docker-builder": {
+        "label": "Docker builder",
+        "icon": "tool",
+        "kind": "build tool",
+        "role": "Dockerfile과 jar를 image로 패키징",
+        "boundary": "Image build"
+      },
+      "docker-image": {
+        "label": "Docker image",
+        "icon": "artifact",
+        "kind": "image artifact",
+        "role": "아직 실행되지 않은 배포 단위",
+        "boundary": "Image artifact"
+      },
+      "compose-runtime": {
+        "label": "Compose runtime",
+        "icon": "runtime",
+        "kind": "orchestrator",
+        "role": "image와 환경 설정으로 container 실행",
+        "boundary": "Runtime",
+        "codePointIds": [
+          "prod-env"
+        ]
+      },
+      "container": {
+        "label": "Application container",
+        "icon": "runtime",
+        "kind": "runtime instance",
+        "role": "image에서 생성된 실행 격리 단위",
+        "boundary": "Runtime"
+      },
+      "environment-config": {
+        "label": "Environment variables",
+        "icon": "config",
+        "kind": "runtime config",
+        "role": "운영 값을 실행 시점에 주입",
+        "boundary": "Runtime config",
+        "codePointIds": [
+          "prod-env"
+        ]
+      },
+      "prod-profile": {
+        "label": "application-prod.yaml",
+        "icon": "config",
+        "kind": "profile mapping",
+        "role": "환경 변수 이름을 Spring 설정에 연결",
+        "boundary": "Runtime config",
+        "codePointIds": [
+          "prod-env"
+        ]
+      },
+      "spring-process": {
+        "label": "Spring Boot process",
+        "icon": "service",
+        "kind": "process",
+        "role": "container 안에서 실행되는 애플리케이션",
+        "boundary": "Runtime"
+      },
+      "test-failure": {
+        "label": "First failing test",
+        "icon": "evidence",
+        "kind": "failure evidence",
+        "role": "image 단계 이전의 첫 실패 증거",
+        "boundary": "Build evidence"
+      },
+      "image-build-failure": {
+        "label": "Docker build failure",
+        "icon": "evidence",
+        "kind": "failure evidence",
+        "role": "COPY source 불일치 증거",
+        "boundary": "Image evidence"
+      },
+      "runtime-evidence": {
+        "label": "Runtime evidence",
+        "icon": "evidence",
+        "kind": "observation",
+        "role": "container 상태와 애플리케이션 로그",
+        "boundary": "Verification"
+      }
+    },
+    "scenarios": [
+      {
+        "id": "runtime-ready",
+        "label": "jar·image 준비됨",
+        "flowId": "jar-to-container",
+        "tone": "recovered",
+        "prompt": "테스트를 통과한 jar와 Docker image가 준비되었습니다. 운영 실행을 판단할 다음 증거를 예측합니다.",
+        "prediction": {
+          "prompt": "어디까지 확인해야 ‘운영에서 실행됐다’고 판단할 수 있을까요?",
+          "options": [
+            { "id": "jar", "label": "jar가 생성된 시점" },
+            { "id": "image", "label": "Docker image가 생성된 시점" },
+            { "id": "runtime", "label": "container 상태와 애플리케이션 로그를 확인한 시점" }
+          ],
+          "answer": "runtime",
+          "explanation": "jar와 image는 실행 전 산출물입니다. container 안의 process 상태와 로그가 연결되어야 runtime 성공을 판단할 수 있습니다."
+        },
+        "route": [
+          "Source code",
+          "./gradlew test bootJar",
+          "build/libs/*.jar",
+          "Dockerfile",
+          "Docker image",
+          "Container",
+          "docker compose ps · logs"
+        ],
+        "diagram": {
+          "caption": "source를 검증한 뒤 jar를 image로 패키징하고, image에서 생성된 container 안의 Spring process를 runtime 증거로 확인합니다.",
+          "lanes": [
+            {
+              "id": "build-image",
+              "label": "Build time → Image artifact",
+              "description": "실행 파일과 image 설계서를 입력으로 아직 실행되지 않은 image를 만듭니다.",
+              "steps": [
+                {
+                  "from": "source-code",
+                  "to": "gradle-test",
+                  "verb": "검증 실행",
+                  "payload": "./gradlew test",
+                  "kind": "request",
+                  "concept": "배포 전 검증 gate"
+                },
+                {
+                  "from": "gradle-test",
+                  "to": "gradle-build",
+                  "verb": "통과 후 빌드",
+                  "payload": "./gradlew bootJar",
+                  "kind": "call"
+                },
+                {
+                  "from": "gradle-build",
+                  "to": "application-jar",
+                  "verb": "생성",
+                  "payload": "build/libs/*.jar",
+                  "kind": "transform",
+                  "codePointIds": [
+                    "dockerfile-jar"
+                  ]
+                },
+                {
+                  "from": "dockerfile",
+                  "to": "docker-builder",
+                  "verb": "빌드 규칙 제공",
+                  "payload": "COPY + ENTRYPOINT",
+                  "kind": "config",
+                  "codePointIds": [
+                    "dockerfile-jar"
+                  ]
+                },
+                {
+                  "from": "application-jar",
+                  "to": "docker-builder",
+                  "verb": "패키징 입력",
+                  "payload": "executable jar",
+                  "kind": "transform"
+                },
+                {
+                  "from": "docker-builder",
+                  "to": "docker-image",
+                  "verb": "image 생성",
+                  "payload": "tagged image artifact",
+                  "kind": "transform",
+                  "check": "image는 아직 실행 중인 process가 아닙니다."
+                }
+              ]
+            },
+            {
+              "id": "image-runtime",
+              "label": "Image artifact → Runtime",
+              "description": "runtime이 image로 container를 만들고 그 안에서 애플리케이션 process를 실행합니다.",
+              "steps": [
+                {
+                  "from": "docker-image",
+                  "to": "compose-runtime",
+                  "verb": "실행 대상으로 선택",
+                  "payload": "image tag",
+                  "kind": "config"
+                },
+                {
+                  "from": "compose-runtime",
+                  "to": "container",
+                  "verb": "instance 생성",
+                  "payload": "docker compose up -d",
+                  "kind": "call"
+                },
+                {
+                  "from": "container",
+                  "to": "spring-process",
+                  "verb": "ENTRYPOINT 실행",
+                  "payload": "java -jar /app/app.jar",
+                  "kind": "call"
+                },
+                {
+                  "from": "spring-process",
+                  "to": "runtime-evidence",
+                  "verb": "상태와 로그 출력",
+                  "payload": "docker compose ps + application logs",
+                  "kind": "response",
+                  "check": "container 상태와 애플리케이션 로그를 함께 확인합니다."
+                }
+              ]
+            }
+          ]
+        },
+        "snapshot": [
+          {
+            "label": "실행 상태",
+            "value": "컨테이너와 로그 확인 완료",
+            "tone": "recovered"
+          },
+          {
+            "label": "검증 증거",
+            "value": "docker compose ps · application logs",
+            "tone": "signal"
+          }
+        ],
+        "evidence": "bootJar 산출물 경로와 Dockerfile의 COPY 경로가 일치하고, 컨테이너 상태와 애플리케이션 로그가 확인됩니다.",
+        "outcome": "빌드 산출물과 runtime 증거가 모두 연결되어야 실행 성공으로 판단합니다."
+      },
+      {
+        "id": "runtime-test-failed",
+        "label": "Gradle 테스트 실패",
+        "flowId": "jar-to-container",
+        "tone": "blocked",
+        "prompt": "배포 전 `./gradlew test`가 실패했습니다. image나 container로 범위를 넓히기 전에 어떤 증거를 볼지 예측합니다.",
+        "prediction": {
+          "prompt": "테스트 실패 뒤 가장 먼저 확인할 경계는 어디일까요?",
+          "options": [
+            { "id": "test", "label": "처음 실패한 테스트" },
+            { "id": "image", "label": "Docker image 생성 로그" },
+            { "id": "container", "label": "container 실행 상태" }
+          ],
+          "answer": "test",
+          "explanation": "테스트가 build gate를 통과하지 못했으므로 jar·image·container 경로는 아직 시작되지 않았습니다."
+        },
+        "route": [
+          "Source code",
+          "./gradlew test",
+          "bootJar",
+          "Docker build",
+          "Container"
+        ],
+        "diagram": {
+          "caption": "테스트가 첫 gate에서 실패했으므로 jar, image, container 문제로 원인을 확대하지 않습니다.",
+          "lanes": [
+            {
+              "id": "build-gate",
+              "label": "Build verification gate",
+              "description": "jar 생성보다 먼저 현재 동작의 실패를 확인합니다.",
+              "steps": [
+                {
+                  "from": "source-code",
+                  "to": "gradle-test",
+                  "verb": "검증 실행",
+                  "payload": "./gradlew test",
+                  "kind": "request"
+                },
+                {
+                  "from": "gradle-test",
+                  "to": "test-failure",
+                  "verb": "첫 실패 기록",
+                  "payload": "failing test result",
+                  "kind": "failure",
+                  "check": "실패한 테스트 이름과 assertion을 먼저 확인합니다."
+                }
+              ]
+            }
+          ],
+          "notReached": [
+            {
+              "label": "Executable jar",
+              "reason": "test gate를 통과하지 않아 bootJar를 실행하지 않습니다."
+            },
+            {
+              "label": "Docker image와 container",
+              "reason": "jar가 없으므로 image build와 runtime은 시작되지 않습니다."
+            }
+          ]
+        },
+        "snapshot": [
+          {
+            "label": "첫 실패",
+            "value": "테스트 실패 · jar 생성 전 차단",
+            "tone": "blocked"
+          },
+          {
+            "label": "다음 단계",
+            "value": "bootJar · Docker build 실행하지 않음",
+            "tone": "blocked"
+          }
+        ],
+        "evidence": "배포 전 기본 동작을 확인하는 `./gradlew test`가 통과하지 않았습니다.",
+        "outcome": "jar와 image 문제로 확대하지 않고 처음 실패한 테스트를 먼저 해결합니다.",
+        "stopAfter": 1
+      },
+      {
+        "id": "runtime-copy-mismatch",
+        "label": "jar 경로 불일치",
+        "flowId": "jar-to-container",
+        "tone": "blocked",
+        "prompt": "bootJar 결과와 Dockerfile의 COPY 경로가 다를 때 build 경계를 추적합니다.",
+        "prediction": {
+          "prompt": "이 조건에서 실제로 도달하지 못한 첫 실행 단위는 무엇일까요?",
+          "options": [
+            { "id": "jar", "label": "jar 생성" },
+            { "id": "image", "label": "Docker image 생성" },
+            { "id": "process", "label": "Spring Boot process 시작" }
+          ],
+          "answer": "image",
+          "explanation": "jar는 존재하지만 COPY 입력 경로가 맞지 않아 image build에서 멈춥니다. runtime 문제로 확대하면 안 됩니다."
+        },
+        "route": [
+          "./gradlew bootJar",
+          "build/libs/*.jar",
+          "Dockerfile COPY",
+          "Docker image",
+          "Container"
+        ],
+        "diagram": {
+          "caption": "jar는 생성됐지만 Dockerfile의 COPY source와 맞지 않아 image 생성 경계에서 멈춥니다.",
+          "lanes": [
+            {
+              "id": "copy-boundary",
+              "label": "Jar artifact → Image build",
+              "description": "실제 jar 경로와 Dockerfile이 요구하는 source 경로를 비교합니다.",
+              "steps": [
+                {
+                  "from": "gradle-build",
+                  "to": "application-jar",
+                  "verb": "생성",
+                  "payload": "build/libs/*.jar",
+                  "kind": "transform",
+                  "codePointIds": [
+                    "dockerfile-jar"
+                  ]
+                },
+                {
+                  "from": "dockerfile",
+                  "to": "docker-builder",
+                  "verb": "COPY source 지정",
+                  "payload": "Dockerfile COPY path",
+                  "kind": "config",
+                  "codePointIds": [
+                    "dockerfile-jar"
+                  ]
+                },
+                {
+                  "from": "application-jar",
+                  "to": "docker-builder",
+                  "verb": "COPY 시도",
+                  "payload": "actual jar path",
+                  "kind": "transform"
+                },
+                {
+                  "from": "docker-builder",
+                  "to": "image-build-failure",
+                  "verb": "경로 불일치로 중단",
+                  "payload": "COPY source not found",
+                  "kind": "failure",
+                  "check": "jar 산출물 경로와 COPY source를 먼저 비교합니다."
+                }
+              ]
+            }
+          ],
+          "notReached": [
+            {
+              "label": "Docker image",
+              "reason": "COPY가 실패해 image artifact가 생성되지 않았습니다."
+            },
+            {
+              "label": "Application container",
+              "reason": "실행할 image가 없으므로 runtime 문제로 해석하지 않습니다."
+            }
+          ]
+        },
+        "snapshot": [
+          {
+            "label": "Docker build",
+            "value": "jar COPY 경로 불일치",
+            "tone": "blocked"
+          },
+          {
+            "label": "Image 상태",
+            "value": "생성되지 않음",
+            "tone": "blocked"
+          }
+        ],
+        "evidence": "문서의 실패 확인 순서는 jar 산출물 경로와 Dockerfile의 `COPY` 경로를 먼저 비교하도록 안내합니다.",
+        "outcome": "image가 만들어지지 않았으므로 container 실행 문제로 해석하지 않습니다.",
+        "stopAfter": 2
+      },
+      {
+        "id": "runtime-env-missing",
+        "label": "운영 환경변수 누락",
+        "flowId": "runtime-config",
+        "tone": "blocked",
+        "prompt": "prod profile이 요구하는 환경변수가 빠졌을 때 실행과 health 증거를 구분합니다.",
+        "prediction": {
+          "prompt": "container 명령이 끝났다면 배포가 정상이라고 볼 수 있을까요?",
+          "options": [
+            { "id": "command", "label": "명령이 끝났으므로 정상" },
+            { "id": "port", "label": "포트가 열렸으면 정상" },
+            { "id": "evidence", "label": "로그와 health 증거 전에는 보류" }
+          ],
+          "answer": "evidence",
+          "explanation": "환경변수 누락은 process 시작 뒤 설정 바인딩에서 드러날 수 있습니다. 실행 명령 종료와 애플리케이션 정상 상태는 다릅니다."
+        },
+        "route": [
+          "Compose runtime",
+          "Environment variables",
+          "application-prod.yaml",
+          "Spring Boot App",
+          "Runtime log",
+          "Health evidence"
+        ],
+        "diagram": {
+          "caption": "application-prod.yaml은 secret 저장소가 아니라 환경 변수 이름을 Spring 설정에 연결하며, 필수 값이 빠지면 process 시작 증거를 얻지 못합니다.",
+          "lanes": [
+            {
+              "id": "runtime-config-boundary",
+              "label": "Runtime configuration",
+              "description": "환경 설정은 source나 image가 아니라 container 실행 시점에 전달됩니다.",
+              "steps": [
+                {
+                  "from": "environment-config",
+                  "to": "compose-runtime",
+                  "verb": "실행 값 제공",
+                  "payload": "필수 환경변수 일부 누락",
+                  "kind": "config",
+                  "codePointIds": [
+                    "prod-env"
+                  ]
+                },
+                {
+                  "from": "compose-runtime",
+                  "to": "container",
+                  "verb": "환경과 image 전달",
+                  "payload": "compose runtime config",
+                  "kind": "config"
+                },
+                {
+                  "from": "container",
+                  "to": "spring-process",
+                  "verb": "process 실행",
+                  "payload": "prod profile",
+                  "kind": "call"
+                },
+                {
+                  "from": "prod-profile",
+                  "to": "spring-process",
+                  "verb": "설정 해석",
+                  "payload": "${ENV_NAME} mappings",
+                  "kind": "config",
+                  "codePointIds": [
+                    "prod-env"
+                  ]
+                },
+                {
+                  "from": "spring-process",
+                  "to": "runtime-evidence",
+                  "verb": "시작 실패 기록",
+                  "payload": "missing configuration log",
+                  "kind": "failure",
+                  "check": "환경 변수 이름과 startup log를 확인하며 값 자체는 노출하지 않습니다."
+                }
+              ]
+            }
+          ],
+          "notReached": [
+            {
+              "label": "정상 실행 증거",
+              "reason": "애플리케이션 시작이 확인되지 않아 health 증거도 확정할 수 없습니다."
+            }
+          ]
+        },
+        "snapshot": [
+          {
+            "label": "Runtime config",
+            "value": "필수 환경변수 누락",
+            "tone": "blocked"
+          },
+          {
+            "label": "Health evidence",
+            "value": "확인되지 않음",
+            "tone": "blocked"
+          }
+        ],
+        "evidence": "application-prod.yaml은 DB, Redis, JWT, mail, OAuth2 값을 실행 환경에서 주입받습니다.",
+        "outcome": "컨테이너 명령이 끝났더라도 로그와 health 증거가 없으면 정상 실행으로 판정하지 않습니다.",
+        "stopAfter": 4
+      }
+    ]
+  },
   "repo": {
     "name": "spring-boot-deployment-runtime-lab",
     "path": "spring-boot-deployment-runtime-lab"
