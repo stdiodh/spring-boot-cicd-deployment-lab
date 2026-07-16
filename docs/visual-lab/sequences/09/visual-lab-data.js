@@ -37,6 +37,7 @@ window.visualLabData = {
         "icon": "artifact",
         "kind": "source",
         "role": "빌드 입력",
+        "systemLayer": "outside",
         "boundary": "Source",
         "codePointIds": [
           "dockerfile-jar"
@@ -47,6 +48,7 @@ window.visualLabData = {
         "icon": "test",
         "kind": "verification",
         "role": "jar 생성 전 동작 검증",
+        "systemLayer": "runtime",
         "boundary": "Build time"
       },
       "gradle-build": {
@@ -54,6 +56,7 @@ window.visualLabData = {
         "icon": "tool",
         "kind": "build tool",
         "role": "실행 가능한 jar 생성",
+        "systemLayer": "runtime",
         "boundary": "Build time",
         "codePointIds": [
           "dockerfile-jar"
@@ -64,6 +67,7 @@ window.visualLabData = {
         "icon": "artifact",
         "kind": "artifact",
         "role": "운영 실행 산출물",
+        "systemLayer": "runtime",
         "boundary": "Build artifact",
         "codePointIds": [
           "dockerfile-jar"
@@ -74,6 +78,7 @@ window.visualLabData = {
         "icon": "config",
         "kind": "build recipe",
         "role": "jar 복사와 Java 실행 명령 정의",
+        "systemLayer": "runtime",
         "boundary": "Image build",
         "codePointIds": [
           "dockerfile-jar"
@@ -84,6 +89,7 @@ window.visualLabData = {
         "icon": "config",
         "kind": "build context filter",
         "role": "Docker builder에 보낼 파일과 제외할 경로 결정",
+        "systemLayer": "runtime",
         "boundary": "Image build",
         "codePointIds": [
           "dockerignore-build-context"
@@ -94,6 +100,7 @@ window.visualLabData = {
         "icon": "tool",
         "kind": "build tool",
         "role": "Dockerfile과 jar를 image로 패키징",
+        "systemLayer": "runtime",
         "boundary": "Image build"
       },
       "docker-image": {
@@ -101,6 +108,7 @@ window.visualLabData = {
         "icon": "artifact",
         "kind": "image artifact",
         "role": "아직 실행되지 않은 배포 단위",
+        "systemLayer": "runtime",
         "boundary": "Image artifact"
       },
       "compose-runtime": {
@@ -108,6 +116,7 @@ window.visualLabData = {
         "icon": "runtime",
         "kind": "orchestrator",
         "role": "image와 환경 설정으로 container 실행",
+        "systemLayer": "runtime",
         "boundary": "Runtime",
         "codePointIds": [
           "prod-env"
@@ -118,6 +127,7 @@ window.visualLabData = {
         "icon": "runtime",
         "kind": "runtime instance",
         "role": "image에서 생성된 실행 격리 단위",
+        "systemLayer": "runtime",
         "boundary": "Runtime"
       },
       "environment-config": {
@@ -125,6 +135,7 @@ window.visualLabData = {
         "icon": "config",
         "kind": "runtime config",
         "role": "운영 값을 실행 시점에 주입",
+        "systemLayer": "runtime",
         "boundary": "Runtime config",
         "codePointIds": [
           "prod-env"
@@ -135,6 +146,7 @@ window.visualLabData = {
         "icon": "config",
         "kind": "profile mapping",
         "role": "환경 변수 이름을 Spring 설정에 연결",
+        "systemLayer": "runtime",
         "boundary": "Runtime config",
         "codePointIds": [
           "prod-env"
@@ -145,6 +157,7 @@ window.visualLabData = {
         "icon": "service",
         "kind": "process",
         "role": "container 안에서 실행되는 애플리케이션",
+        "systemLayer": "runtime",
         "boundary": "Runtime"
       },
       "test-failure": {
@@ -152,6 +165,7 @@ window.visualLabData = {
         "icon": "evidence",
         "kind": "failure evidence",
         "role": "image 단계 이전의 첫 실패 증거",
+        "systemLayer": "runtime",
         "boundary": "Build evidence"
       },
       "image-build-failure": {
@@ -159,6 +173,7 @@ window.visualLabData = {
         "icon": "evidence",
         "kind": "failure evidence",
         "role": "COPY source 불일치 증거",
+        "systemLayer": "runtime",
         "boundary": "Image evidence"
       },
       "runtime-evidence": {
@@ -166,6 +181,7 @@ window.visualLabData = {
         "icon": "evidence",
         "kind": "observation",
         "role": "container 상태와 애플리케이션 로그",
+        "systemLayer": "runtime",
         "boundary": "실행 확인 경계"
       }
     },

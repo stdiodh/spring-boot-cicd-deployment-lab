@@ -49,6 +49,14 @@
     manual: "직접 실행해 확인",
     concept: "이론에서 확인",
   };
+  const systemLayerLabels = {
+    outside: "외부·호출자",
+    interface: "입구·출구",
+    application: "서비스·정책",
+    resource: "상태·데이터",
+    integration: "연동·메시징",
+    runtime: "실행·배포",
+  };
   const observationTitles = {
     request: "요청과 응답이 오가는 순서",
     "request-trace": "요청 객체가 바뀌는 순서",
@@ -234,18 +242,38 @@
     return "service";
   }
 
+  function inferredSystemLayer(actor, label, icon) {
+    const kind = String((actor && actor.kind) || "").toLowerCase();
+    const value = `${label || ""} ${icon || ""}`.toLowerCase();
+    const description = `${kind} ${value}`;
+    if (/client|browser|student|learner|developer|operator|postman|swagger|fixture|assert|test/.test(description)) return "outside";
+    if (/controller|filter|handler|validation|security|api|websocket|response/.test(description)) return "interface";
+    if (/repository|database|mysql|redis|cache|memory|map|table|row/.test(description)) return "resource";
+    if (/rabbit|broker|queue|mail|smtp|oauth|provider|consumer|event/.test(description)) return "integration";
+    if (/docker|container|runtime|host|pipeline|artifact|jar|image|build|config/.test(description)) return "runtime";
+    return "application";
+  }
+
+  function systemLayer(node) {
+    return Object.prototype.hasOwnProperty.call(systemLayerLabels, node && node.systemLayer)
+      ? node.systemLayer
+      : inferredSystemLayer(null, node && node.label, node && node.icon);
+  }
+
   function diagramNode(sequence, nodeId) {
     const workbench = normalizedWorkbench(sequence);
     const catalog = workbench.nodes && typeof workbench.nodes === "object" ? workbench.nodes : {};
     const declared = catalog[nodeId];
     if (declared && typeof declared === "object") {
+      const icon = declared.icon || inferredIcon(null, declared.label || nodeId);
       return {
         id: nodeId,
         label: declared.label || nodeId,
-        icon: declared.icon || inferredIcon(null, declared.label || nodeId),
+        icon,
         kind: declared.kind || "책임 주체",
         role: declared.role || "이 단계의 책임을 수행합니다.",
         boundary: declared.boundary || "System",
+        systemLayer: declared.systemLayer || inferredSystemLayer(null, declared.label || nodeId, icon),
         codePointIds: list(declared.codePointIds),
       };
     }
@@ -259,6 +287,7 @@
       kind: (actor && actor.kind) || "책임 주체",
       role: "이 단계의 책임을 수행합니다.",
       boundary: "System",
+      systemLayer: inferredSystemLayer(actor, label, inferredIcon(actor, label)),
       codePointIds: [],
     };
   }
@@ -366,9 +395,10 @@
     return normalized;
   }
 
-  function diagramParticipantIds(diagram) {
+  function diagramParticipantIds(diagram, activeLane) {
     const referenced = [];
-    list(diagram && diagram.lanes).forEach((lane) => {
+    const lanes = list(activeLane && activeLane.steps).length ? [activeLane] : list(diagram && diagram.lanes);
+    lanes.forEach((lane) => {
       list(lane && lane.steps).forEach((edge) => {
         [edge && edge.from, edge && edge.to].forEach((nodeId) => {
           if (nodeId && !referenced.includes(nodeId)) {
@@ -377,7 +407,10 @@
         });
       });
     });
-    const declared = list(diagram && diagram.participants).filter((nodeId) => referenced.includes(nodeId));
+    const participantOrder = list(activeLane && activeLane.participants).length
+      ? activeLane.participants
+      : diagram && diagram.participants;
+    const declared = list(participantOrder).filter((nodeId) => referenced.includes(nodeId));
     referenced.forEach((nodeId) => {
       if (!declared.includes(nodeId)) {
         declared.push(nodeId);
@@ -632,9 +665,11 @@
 
   function renderSequenceParticipant(sequence, nodeId, participantIndex, activeStep) {
     const node = diagramNode(sequence, nodeId);
+    const layer = systemLayer(node);
     const participant = createElement("li", "sequence-participant");
     participant.style.gridColumn = String(participantIndex + 1);
     participant.dataset.kind = String(node.kind || "actor").toLowerCase().replace(/[^a-z0-9-]+/g, "-");
+    participant.dataset.layer = layer;
     if (activeStep && (activeStep._fromId === nodeId || activeStep._toId === nodeId)) {
       participant.dataset.current = "true";
     }
@@ -644,10 +679,33 @@
     const identity = createElement("span", "sequence-participant__identity");
     identity.append(
       createElement("strong", "sequence-participant__label", node.label),
+      createElement("span", "sequence-participant__layer", systemLayerLabels[layer]),
       createElement("span", "sequence-participant__boundary", node.boundary)
     );
     participant.append(iconWrap, identity, createElement("span", "sequence-participant__role", node.role));
     return participant;
+  }
+
+  function renderSequenceLayerRail(sequence, participantIds) {
+    const rail = createElement("ol", "sequence-layer-rail");
+    rail.setAttribute("aria-label", "현재 경로의 시스템 레이어");
+    const groups = [];
+    participantIds.forEach((nodeId, index) => {
+      const layer = systemLayer(diagramNode(sequence, nodeId));
+      const previous = groups[groups.length - 1];
+      if (previous && previous.layer === layer) {
+        previous.end = index;
+      } else {
+        groups.push({ layer, start: index, end: index });
+      }
+    });
+    groups.forEach((group) => {
+      const item = createElement("li", "sequence-layer-rail__item", systemLayerLabels[group.layer]);
+      item.dataset.layer = group.layer;
+      item.style.gridColumn = `${group.start + 1} / ${group.end + 2}`;
+      rail.appendChild(item);
+    });
+    return rail;
   }
 
   function laneStartIndex(diagram, selectedLaneIndex) {
@@ -698,7 +756,20 @@
     return detail;
   }
 
-  function renderMobileCurrent(activeStep) {
+  function renderMobileActor(sequence, nodeId, fallbackLabel) {
+    const node = diagramNode(sequence, nodeId);
+    const layer = systemLayer(node);
+    const actor = createElement("div", "sequence-mobile-current__actor");
+    actor.dataset.layer = layer;
+    actor.append(
+      createElement("span", "sequence-mobile-current__layer", systemLayerLabels[layer]),
+      createElement("strong", "", node.label || fallbackLabel),
+      createElement("span", "sequence-mobile-current__boundary", node.boundary)
+    );
+    return actor;
+  }
+
+  function renderMobileCurrent(sequence, activeStep) {
     const current = createElement("article", "sequence-mobile-current");
     current.dataset.kind = activeStep.kind || "call";
     current.dataset.focusKey = `diagram-step-${activeStep._globalIndex}`;
@@ -709,9 +780,9 @@
     const route = createElement("div", "sequence-mobile-current__route");
     route.dataset.self = String(isSelfCall);
     route.append(
-      createElement("strong", "sequence-mobile-current__actor", activeStep.from),
+      renderMobileActor(sequence, activeStep._fromId, activeStep.from),
       createElement("span", "sequence-mobile-current__line", isSelfCall ? "같은 책임 안에서" : `${activeStep.verb} ↓`),
-      createElement("strong", "sequence-mobile-current__actor", activeStep.to)
+      renderMobileActor(sequence, activeStep._toId, activeStep.to)
     );
     current.append(
       route,
@@ -734,8 +805,12 @@
     const activeLane = lanesData[activeLaneIndex] || { steps: [] };
     const allSteps = semanticSteps(sequence, scenario);
     const fullLaneSteps = allSteps.filter((step) => step._laneIndex === activeLaneIndex);
-    const laneSteps = fullLaneSteps.slice(0, 7);
-    const participantIds = diagramParticipantIds(diagram);
+    const laneWindowStart = Math.min(
+      Math.max((activeStep._laneStepIndex || 0) - 3, 0),
+      Math.max(fullLaneSteps.length - 7, 0)
+    );
+    const laneSteps = fullLaneSteps.slice(laneWindowStart, laneWindowStart + 7);
+    const participantIds = diagramParticipantIds(diagram, activeLane);
     const figure = createElement("figure", "semantic-diagram");
     figure.setAttribute("aria-label", "선택한 조건에서 전달이 이동하고 상태가 바뀌는 순서");
 
@@ -774,14 +849,15 @@
       createElement("h4", "", activeLane.label || `경로 ${activeLaneIndex + 1}`),
       createElement("p", "", activeLane.description || "위에서 아래로 시간을 따라가며 현재 전달과 상태 변화를 확인합니다.")
     );
-    board.append(boardHeader, renderMobileCurrent(activeStep));
+    board.append(boardHeader, renderMobileCurrent(sequence, activeStep));
 
     const viewport = createElement("div", "sequence-stage__viewport");
     viewport.setAttribute("tabindex", "0");
-    viewport.setAttribute("aria-label", "전체 참여 주체와 수직 시간선. 좌우로 이동해 볼 수 있습니다.");
+    viewport.setAttribute("aria-label", "현재 경로의 참여 주체와 수직 시간선. 좌우로 이동해 볼 수 있습니다.");
     const stage = createElement("div", "sequence-stage");
     stage.style.setProperty("--participant-count", String(Math.max(participantIds.length, 1)));
     stage.style.setProperty("--sequence-stage-width", `${Math.max(participantIds.length * 144, 620)}px`);
+    stage.appendChild(renderSequenceLayerRail(sequence, participantIds));
 
     const participants = createElement("ol", "sequence-participants");
     participants.setAttribute("aria-label", "이 경로에 참여하는 책임 주체");
@@ -796,6 +872,7 @@
     participantIds.forEach((nodeId, index) => {
       const line = createElement("span", "sequence-lifeline");
       line.style.gridColumn = String(index + 1);
+      line.dataset.layer = systemLayer(diagramNode(sequence, nodeId));
       lifelines.appendChild(line);
     });
     messagesWrap.appendChild(lifelines);
@@ -932,7 +1009,7 @@
     figure.appendChild(board);
 
     if (fullLaneSteps.length > 7) {
-      figure.appendChild(createElement("p", "sequence-limit-note", "현재 경로는 첫 7개 전달을 수직 시간선에 표시합니다. 이전·다음 버튼으로 나머지 단계도 확인할 수 있습니다."));
+      figure.appendChild(createElement("p", "sequence-limit-note", "현재 단계 주변의 전달을 최대 7개까지 표시합니다. 이전·다음 버튼을 누르면 시간선도 현재 단계에 맞춰 이동합니다."));
     }
 
     if (list(diagram.notReached).length) {
@@ -950,8 +1027,8 @@
     return figure;
   }
 
-  function renderTopicVisual(workbench) {
-    const visual = workbench.visual;
+  function renderTopicVisual(workbench, scenario) {
+    const visual = (scenario && scenario.visual) || workbench.visual;
     if (!visual || !visual.src) {
       return null;
     }
@@ -1195,7 +1272,7 @@
       return;
     }
 
-    const topicVisual = renderTopicVisual(workbench);
+    const topicVisual = renderTopicVisual(workbench, scenario);
     if (topicVisual) {
       stage.appendChild(topicVisual);
     }

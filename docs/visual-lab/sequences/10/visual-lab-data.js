@@ -37,6 +37,7 @@ window.visualLabData = {
         "icon": "person",
         "kind": "trigger",
         "role": "push 또는 수동 실행으로 workflow 시작",
+        "systemLayer": "outside",
         "boundary": "Source event"
       },
       "github-actions": {
@@ -44,6 +45,7 @@ window.visualLabData = {
         "icon": "pipeline",
         "kind": "orchestrator",
         "role": "job 순서와 needs gate 관리",
+        "systemLayer": "runtime",
         "boundary": "Workflow",
         "codePointIds": [
           "workflow-stages"
@@ -54,6 +56,7 @@ window.visualLabData = {
         "icon": "gate",
         "kind": "job gate",
         "role": "test, bootJar, artifact upload TODO를 가진 목표 gate",
+        "systemLayer": "runtime",
         "boundary": "Build job",
         "codePointIds": [
           "workflow-stages"
@@ -64,6 +67,7 @@ window.visualLabData = {
         "icon": "artifact",
         "kind": "artifact",
         "role": "job 사이에서 전달되는 검증된 배포 파일",
+        "systemLayer": "runtime",
         "boundary": "Artifact transfer"
       },
       "deploy-job": {
@@ -71,6 +75,7 @@ window.visualLabData = {
         "icon": "gate",
         "kind": "job gate",
         "role": "artifact download와 EC2 갱신 TODO를 가진 목표 gate",
+        "systemLayer": "runtime",
         "boundary": "Deploy job",
         "codePointIds": [
           "workflow-stages"
@@ -81,6 +86,7 @@ window.visualLabData = {
         "icon": "security",
         "kind": "protected config",
         "role": "repository에는 참조만 두고 원격 .env에는 실제 값을 materialize",
+        "systemLayer": "runtime",
         "boundary": "Trust boundary"
       },
       "ec2-host": {
@@ -88,6 +94,7 @@ window.visualLabData = {
         "icon": "host",
         "kind": "runtime host",
         "role": "release bundle을 받아 배포 script 실행",
+        "systemLayer": "runtime",
         "boundary": "Remote runtime"
       },
       "deploy-script": {
@@ -95,6 +102,7 @@ window.visualLabData = {
         "icon": "tool",
         "kind": "deployment script",
         "role": "app image build와 compose 갱신을 채워야 하는 TODO script",
+        "systemLayer": "runtime",
         "boundary": "Remote runtime",
         "codePointIds": [
           "inline-deploy-steps"
@@ -105,6 +113,7 @@ window.visualLabData = {
         "icon": "runtime",
         "kind": "runtime instance",
         "role": "갱신된 애플리케이션 실행 단위",
+        "systemLayer": "runtime",
         "boundary": "Remote runtime"
       },
       "verify-job": {
@@ -112,6 +121,7 @@ window.visualLabData = {
         "icon": "gate",
         "kind": "verification gate",
         "role": "deploy 통과 뒤 서비스 증거 확인",
+        "systemLayer": "runtime",
         "boundary": "Verify job",
         "codePointIds": [
           "workflow-stages"
@@ -122,6 +132,7 @@ window.visualLabData = {
         "icon": "test",
         "kind": "verification script",
         "role": "compose 상태·로그 출력 관찰과 HTTP 성공 확인",
+        "systemLayer": "runtime",
         "boundary": "배포 확인 경계",
         "codePointIds": [
           "inline-deploy-steps"
@@ -132,6 +143,7 @@ window.visualLabData = {
         "icon": "response",
         "kind": "runtime evidence",
         "role": "애플리케이션 응답 가능 여부",
+        "systemLayer": "outside",
         "boundary": "응답 확인 경계"
       },
       "workflow-result": {
@@ -139,6 +151,7 @@ window.visualLabData = {
         "icon": "evidence",
         "kind": "decision evidence",
         "role": "build, deploy, verify의 최종 판정",
+        "systemLayer": "runtime",
         "boundary": "Workflow result"
       },
       "build-failure": {
@@ -146,6 +159,7 @@ window.visualLabData = {
         "icon": "evidence",
         "kind": "failure evidence",
         "role": "test 또는 bootJar의 첫 실패",
+        "systemLayer": "runtime",
         "boundary": "Build job"
       },
       "deploy-failure": {
@@ -153,6 +167,7 @@ window.visualLabData = {
         "icon": "evidence",
         "kind": "failure evidence",
         "role": "서버 파일 전달 또는 app 갱신 실패",
+        "systemLayer": "runtime",
         "boundary": "Deploy job"
       },
       "heredoc-boundary": {
@@ -160,6 +175,7 @@ window.visualLabData = {
         "icon": "evidence",
         "kind": "shell parsing boundary",
         "role": "들여쓰기된 ENV가 종료자로 인식되지 않아 뒤 명령을 .env에 포함",
+        "systemLayer": "runtime",
         "boundary": "원격 shell"
       },
       "verify-failure": {
@@ -167,6 +183,7 @@ window.visualLabData = {
         "icon": "evidence",
         "kind": "failure evidence",
         "role": "docker 명령 오류 또는 HTTP health check 실패",
+        "systemLayer": "runtime",
         "boundary": "Verify job"
       }
     },
