@@ -193,12 +193,12 @@ window.visualLabData = {
         "label": "TODO·heredoc 수정 후 검증 목표",
         "flowId": "build-deploy-verify",
         "tone": "recovered",
-        "prompt": "workflow와 script TODO를 채우고 들여쓰기 없는 heredoc 종료자 또는 `printf` 방식으로 원격 `.env` 생성을 고쳤다고 가정합니다. 어디까지 관찰해야 성공을 판단할지 예측합니다.",
-        "observationTitle": "검증된 artifact가 deploy를 거쳐 runtime evidence로 닫히는 경로",
+        "prompt": "workflow와 script TODO를 채우고 원격 `.env` 생성의 heredoc 종료 방식도 고쳤습니다.",
+        "observationTitle": "build부터 health까지 이어지는 gate",
         "theoryRef": "../../../theory.md#seq-10",
         "reflection": {
-          "prompt": "workflow success를 구성하는 마지막 증거를 적어보세요.",
-          "hint": "build와 deploy뿐 아니라 ps·log와 HTTP health가 필요합니다."
+          "prompt": "deploy job이 green인데 서비스 접속이 안 될 때 다음에 볼 증거를 적어보세요.",
+          "hint": "ps·log로 process를 보고 `curl --fail`로 HTTP 응답을 확인하세요."
         },
         "prediction": {
           "prompt": "어느 gate까지 통과해야 배포 성공으로 판단할 수 있을까요?",
@@ -222,12 +222,12 @@ window.visualLabData = {
           "HTTP response"
         ],
         "diagram": {
-          "caption": "현재 실행 결과가 아니라 수정 후 목표 흐름입니다. needs gate, artifact 전달, deploy, runtime 검증이 실제 run에서 모두 통과해야 workflow가 성공합니다.",
+          "caption": "수정 후 목표는 build artifact를 EC2에 전달하고 deploy한 뒤 ps·log·HTTP health로 verify하는 흐름입니다.",
           "lanes": [
             {
               "id": "workflow-orchestration",
               "label": "workflow 시작 → job 의존성",
-              "description": "job의 성공 상태가 다음 needs gate를 여는 조건입니다.",
+              "description": "각 job이 다음 `needs` gate를 여는 책임을 가집니다.",
               "steps": [
                 {
                   "from": "git-trigger",
@@ -308,7 +308,7 @@ window.visualLabData = {
             {
               "id": "remote-deploy",
               "label": "artifact 전달 → EC2 갱신",
-              "description": "수정 후 deploy job은 bundle을 SCP로 배치하고 secret 값을 원격 `.env`에 기록한 뒤 app 갱신 script를 실행합니다.",
+              "description": "deploy job이 bundle, 원격 `.env`, app 갱신 script를 연결합니다.",
               "steps": [
                 {
                   "from": "deploy-job",
@@ -450,16 +450,16 @@ window.visualLabData = {
             "tone": "recovered"
           }
         ],
-        "evidence": "TODO와 heredoc을 고친 실제 run에서 artifact 전달, deploy script 실행, compose·log 출력, `curl --fail` 결과를 각각 확인해야 합니다.",
-        "outcome": "현재 저장소가 이미 통과했다고 말하지 않습니다. 수정 후에도 runtime 출력과 HTTP health check가 성공해야 workflow를 성공으로 판정합니다."
+        "evidence": "수정 후 실제 run의 artifact 전달, deploy script, compose·log, `curl --fail` 결과가 각각 필요합니다.",
+        "outcome": "수정만으로는 완료가 아니며 실제 run의 runtime 출력과 HTTP health가 성공해야 합니다."
       },
       {
         "id": "pipeline-build-failed",
         "label": "test·bootJar 실패",
         "flowId": "build-deploy-verify",
         "tone": "blocked",
-        "prompt": "테스트 또는 bootJar가 실패했을 때 deploy가 실행되는지 확인합니다.",
-        "observationTitle": "build 실패가 artifact와 deploy job을 막는 경로",
+        "prompt": "테스트 또는 bootJar가 실패했습니다.",
+        "observationTitle": "build 실패 뒤 닫힌 downstream gate",
         "theoryRef": "../../../theory.md#seq-10",
         "reflection": {
           "prompt": "build gate 실패 뒤 실행되지 않는 job과 artifact를 적어보세요.",
@@ -483,12 +483,12 @@ window.visualLabData = {
           "verify job"
         ],
         "diagram": {
-          "caption": "build job이 실패하면 artifact가 없고 needs gate가 deploy와 verify를 blocked 상태로 남깁니다.",
+          "caption": "build job 실패로 release bundle이 생기지 않고 `needs`가 deploy와 verify를 열지 않습니다.",
           "lanes": [
             {
               "id": "build-blocked",
               "label": "build 실패 → deploy 차단",
-              "description": "처음 실패한 build step에서 원인 분석을 시작합니다.",
+              "description": "build job이 artifact 생성과 downstream 진입을 함께 막습니다.",
               "steps": [
                 {
                   "from": "git-trigger",
@@ -563,7 +563,7 @@ window.visualLabData = {
             "tone": "blocked"
           }
         ],
-        "evidence": "build와 test가 실패하면 artifact가 만들어지지 않고 `needs`로 연결된 다음 job은 진행되지 않아야 합니다.",
+        "evidence": "workflow run의 첫 실패 step, release bundle 부재, downstream job의 skipped 상태를 확인합니다.",
         "outcome": "처음 실패한 build step을 원인 분석의 출발점으로 삼습니다.",
         "stopAfter": 1
       },
@@ -572,8 +572,8 @@ window.visualLabData = {
         "label": "원격 .env heredoc 미종료",
         "flowId": "workflow-step-responsibility",
         "tone": "blocked",
-        "prompt": "현재 가이드와 완성 예시의 원격 `.env` 작성 구간에서 종료자 `ENV` 앞에 공백이 남습니다. shell이 실제로 실행하는 범위를 확인합니다.",
-        "observationTitle": "들여쓰기된 ENV가 닫히지 않아 deploy 명령이 .env에 삼켜지는 경로",
+        "prompt": "원격 `.env` heredoc의 종료자 `ENV` 앞에 공백이 남아 있습니다.",
+        "observationTitle": "닫히지 않은 heredoc과 deploy 미실행",
         "theoryRef": "../../../theory.md#seq-10",
         "reflection": {
           "prompt": "workflow job 상태와 실제 deploy script 실행을 분리하는 증거를 적어보세요.",
@@ -598,12 +598,12 @@ window.visualLabData = {
           "deploy.sh line swallowed"
         ],
         "diagram": {
-          "caption": "artifact와 SSH 연결이 준비돼도 heredoc이 닫히지 않으면 뒤의 deploy.sh 줄이 `.env` 내용이 됩니다. SSH가 0으로 끝날 가능성도 있어 job 상태만으로 성공을 판정할 수 없습니다.",
+          "caption": "artifact 전달 뒤 heredoc이 닫히지 않아 chmod와 deploy.sh 줄이 `.env` 입력으로 소비될 수 있습니다.",
           "lanes": [
             {
               "id": "deploy-blocked",
               "label": "artifact 전달 → 원격 shell parsing blocker",
-              "description": "검증된 bundle이 있어도 원격 `.env` 생성 문법이 deploy script 실행보다 먼저 닫혀야 합니다.",
+              "description": "원격 shell이 `.env` 입력과 실행할 command를 구분합니다.",
               "steps": [
                 {
                   "from": "build-job",
@@ -702,8 +702,8 @@ window.visualLabData = {
             "tone": "blocked"
           }
         ],
-        "evidence": "release 배치는 workflow의 SCP가 담당합니다. 현재 원격 heredoc은 deploy.sh 실행 줄을 `.env`에 포함할 수 있어 app image build와 Compose 갱신 증거가 없습니다.",
-        "outcome": "job green 가능성과 실제 배포 성공을 분리하고 heredoc 종료 방식과 원격 command trace를 먼저 고칩니다.",
+        "evidence": "SCP는 release 배치까지만 보여줍니다. 현재 heredoc에서는 deploy.sh 실행과 app 갱신 증거가 없습니다.",
+        "outcome": "원격 command trace가 없으면 job 상태만으로 실제 deploy 성공을 판단할 수 없습니다.",
         "stopAfter": 3
       },
       {
@@ -711,8 +711,8 @@ window.visualLabData = {
         "label": "deploy 후 HTTP 응답 없음",
         "flowId": "workflow-step-responsibility",
         "tone": "warning",
-        "prompt": "app container 갱신 명령은 끝났지만 `curl --fail` HTTP 확인이 성공하지 않았습니다. 현재 상태를 예측합니다.",
-        "observationTitle": "app 갱신 명령 뒤 health 증거가 없어 성공 판정이 멈추는 경로",
+        "prompt": "app container 갱신 명령은 끝났지만 `curl --fail`이 실패했습니다.",
+        "observationTitle": "deploy 완료와 health 실패 사이",
         "theoryRef": "../../../theory.md#seq-10",
         "reflection": {
           "prompt": "deploy가 끝났어도 완료로 볼 수 없는 조건을 적어보세요.",
@@ -743,7 +743,7 @@ window.visualLabData = {
             {
               "id": "verify-warning",
               "label": "deploy 통과 → verify 실패",
-              "description": "deploy 완료와 서비스 정상 상태를 서로 다른 gate로 봅니다.",
+              "description": "verify job이 container 갱신과 서비스 응답을 분리해 판정합니다.",
               "steps": [
                 {
                   "from": "release-bundle",
@@ -839,7 +839,7 @@ window.visualLabData = {
           }
         ],
         "evidence": "check-deploy.sh는 docker 명령 오류 없이 ps·log 출력을 보여주고, `curl --fail`이 성공해야 0으로 종료합니다. 로그 내용의 정상 여부를 자동 판정하지는 않습니다.",
-        "outcome": "실행 파일 전달은 끝났지만 서비스 정상 여부가 확인되지 않았으므로 배포 완료로 보지 않습니다.",
+        "outcome": "artifact와 container가 갱신돼도 HTTP health가 실패하면 배포 완료가 아닙니다.",
         "stopAfter": 5
       }
     ]

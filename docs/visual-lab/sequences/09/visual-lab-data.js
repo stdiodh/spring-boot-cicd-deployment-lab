@@ -191,8 +191,8 @@ window.visualLabData = {
         "label": ".dockerignore 조정 뒤 image 준비",
         "flowId": "jar-to-container",
         "tone": "recovered",
-        "prompt": "`.dockerignore`가 jar를 build context에 포함하도록 조정되어 테스트를 통과한 jar와 Docker image가 준비됐다고 가정합니다. 운영 실행을 판단할 다음 증거를 예측합니다.",
-        "observationTitle": "jar와 image가 container·process·runtime evidence로 이어지는 경로",
+        "prompt": "`.dockerignore` 조정 뒤 테스트를 통과한 jar와 Docker image가 준비됐습니다.",
+        "observationTitle": "image 이후 runtime 확인 경계",
         "theoryRef": "../../../theory.md#seq-09",
         "reflection": {
           "prompt": "image 생성과 서비스 실행 성공 사이에 필요한 상태를 순서대로 적어보세요.",
@@ -223,7 +223,7 @@ window.visualLabData = {
             {
               "id": "build-image",
               "label": "소스 검증 → image artifact",
-              "description": "실행 파일과 image 설계서를 입력으로 아직 실행되지 않은 image를 만듭니다.",
+              "description": "검증된 jar와 Dockerfile을 실행 전 image로 묶습니다.",
               "steps": [
                 {
                   "from": "source-code",
@@ -322,7 +322,7 @@ window.visualLabData = {
             {
               "id": "image-runtime",
               "label": "image artifact → 실행 프로세스",
-              "description": "runtime이 image로 container를 만들고 그 안에서 애플리케이션 process를 실행합니다.",
+              "description": "Compose가 container를 만들고 ENTRYPOINT가 Spring process를 시작합니다.",
               "steps": [
                 {
                   "from": "docker-image",
@@ -397,16 +397,16 @@ window.visualLabData = {
             "tone": "signal"
           }
         ],
-        "evidence": "`.dockerignore` 조정 뒤 bootJar 산출물이 build context에 포함되고, 같은 `:latest` tag를 쓰는 운영 Compose에서 컨테이너 상태와 애플리케이션 로그를 확인해야 합니다.",
-        "outcome": "빌드 산출물과 runtime 증거가 모두 연결되어야 실행 성공으로 판단합니다."
+        "evidence": "build context의 jar 포함 여부와 운영 Compose의 container 상태·로그·health를 각각 확인해야 합니다.",
+        "outcome": "image가 있어도 Spring process와 runtime 증거가 없으면 실행 성공이 아닙니다."
       },
       {
         "id": "runtime-test-failed",
         "label": "Gradle 테스트 실패",
         "flowId": "jar-to-container",
         "tone": "blocked",
-        "prompt": "배포 전 `./gradlew test`가 실패했습니다. image나 container로 범위를 넓히기 전에 어떤 증거를 볼지 예측합니다.",
-        "observationTitle": "첫 build gate에서 jar와 image 생성 전에 멈추는 경로",
+        "prompt": "배포 전 `./gradlew test`가 실패했습니다.",
+        "observationTitle": "첫 build gate의 중단 범위",
         "theoryRef": "../../../theory.md#seq-09",
         "reflection": {
           "prompt": "테스트 실패가 뒤의 artifact와 runtime 단계에 어떤 영향을 주는지 적어보세요.",
@@ -435,7 +435,7 @@ window.visualLabData = {
             {
               "id": "build-gate",
               "label": "테스트 → build gate",
-              "description": "jar 생성보다 먼저 현재 동작의 실패를 확인합니다.",
+              "description": "애플리케이션 테스트가 jar 생성 전 gate를 맡습니다.",
               "steps": [
                 {
                   "from": "source-code",
@@ -492,7 +492,7 @@ window.visualLabData = {
             "tone": "blocked"
           }
         ],
-        "evidence": "배포 전 기본 동작을 확인하는 `./gradlew test`가 통과하지 않았습니다.",
+        "evidence": "실패한 test task와 assertion까지만 확인됐으며 jar·image·container 증거는 아직 없습니다.",
         "outcome": "jar와 image 문제로 확대하지 않고 처음 실패한 테스트를 먼저 해결합니다.",
         "stopAfter": 1
       },
@@ -501,8 +501,8 @@ window.visualLabData = {
         "label": ".dockerignore가 jar 제외",
         "flowId": "jar-to-container",
         "tone": "blocked",
-        "prompt": "bootJar는 `build/libs/*.jar`를 만들었지만 현재 `.dockerignore`가 `build` 전체를 제외합니다. image build의 첫 실패 경계를 추적합니다.",
-        "observationTitle": "jar가 build context에서 제외되어 image가 생기지 않는 경로",
+        "prompt": "bootJar는 `build/libs/*.jar`를 만들었지만 현재 `.dockerignore`가 `build` 전체를 제외합니다.",
+        "observationTitle": "build context에서 사라진 jar",
         "theoryRef": "../../../theory.md#seq-09",
         "reflection": {
           "prompt": "jar 존재와 image 생성 성공이 왜 다른 증거인지 적어보세요.",
@@ -532,7 +532,7 @@ window.visualLabData = {
             {
               "id": "copy-boundary",
               "label": "jar artifact → image build",
-              "description": "jar의 host 경로, Dockerfile COPY source, `.dockerignore`의 build context 포함 여부를 함께 비교합니다.",
+              "description": "host의 jar와 Docker builder가 볼 수 있는 COPY source를 구분합니다.",
               "steps": [
                 {
                   "from": "gradle-build",
@@ -640,7 +640,7 @@ window.visualLabData = {
             "tone": "blocked"
           }
         ],
-        "evidence": "`sed -n '1,120p' .dockerignore` 출력에서 `build` 규칙을 직접 읽고, 이어진 Docker build의 `COPY source not found`를 같은 build-context 경계로 연결합니다.",
+        "evidence": "`.dockerignore`의 `build` 규칙과 Docker build의 `COPY source not found`가 같은 build-context 경계를 가리킵니다.",
         "outcome": "jar 경로를 unignore하거나 build 제외 정책을 조정하기 전에는 image와 app container 성공을 주장하지 않습니다.",
         "stopAfter": 2
       },
@@ -649,8 +649,8 @@ window.visualLabData = {
         "label": "운영 환경변수 누락",
         "flowId": "runtime-config",
         "tone": "blocked",
-        "prompt": "prod profile이 요구하는 환경변수가 빠졌을 때 실행과 health 증거를 구분합니다.",
-        "observationTitle": "container 실행 입력은 생겼지만 Spring process가 설정에서 멈추는 경로",
+        "prompt": "prod profile이 요구하는 환경변수가 빠졌습니다.",
+        "observationTitle": "환경변수 누락과 process 시작 실패",
         "theoryRef": "../../../theory.md#seq-09",
         "reflection": {
           "prompt": "compose 명령 종료와 애플리케이션 정상 실행을 구분해 적어보세요.",
@@ -680,7 +680,7 @@ window.visualLabData = {
             {
               "id": "runtime-config-boundary",
               "label": "실행 설정 → process 시작",
-              "description": "환경 설정은 source나 image가 아니라 container 실행 시점에 전달됩니다.",
+              "description": "Compose가 prod 설정값을 container 실행 시점에 전달합니다.",
               "steps": [
                 {
                   "from": "environment-config",
@@ -781,7 +781,7 @@ window.visualLabData = {
             "tone": "blocked"
           }
         ],
-        "evidence": "application-prod.yaml은 DB, Redis, JWT, mail, OAuth2 값을 실행 환경에서 주입받습니다.",
+        "evidence": "application-prod.yaml은 필요한 환경변수 이름을 보여줍니다. 실제 누락 영향은 startup log와 health로 확인해야 합니다.",
         "outcome": "컨테이너 명령이 끝났더라도 로그와 health 증거가 없으면 정상 실행으로 판정하지 않습니다.",
         "stopAfter": 4
       }
