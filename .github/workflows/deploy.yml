@@ -42,14 +42,28 @@ jobs:
             exit 1
           fi
 
-          git fetch --no-tags origin \
-            "+refs/heads/10-answer:refs/remotes/origin/10-answer"
-          if [[ "$(git cat-file -t "refs/tags/${GITHUB_REF_NAME}")" != "tag" ]]; then
+          tag_ref="refs/tags/${GITHUB_REF_NAME}"
+          tag_refs="$(git ls-remote --tags origin "$tag_ref" "${tag_ref}^{}")"
+          tag_object_sha="$(
+            awk -v expected="$tag_ref" '$2 == expected { print $1 }' <<< "$tag_refs"
+          )"
+          release_sha="$(
+            awk -v expected="${tag_ref}^{}" '$2 == expected { print $1 }' <<< "$tag_refs"
+          )"
+
+          if [[ ! "$tag_object_sha" =~ ^[0-9a-f]{40}$ ]] || \
+            [[ ! "$release_sha" =~ ^[0-9a-f]{40}$ ]]
+          then
             echo "::error::Deployment tags must be annotated tags."
             exit 1
           fi
+          if [[ "$release_sha" != "$GITHUB_SHA" ]]; then
+            echo "::error::Remote deployment tag does not match the workflow revision."
+            exit 1
+          fi
 
-          release_sha="$(git rev-list -n 1 "refs/tags/${GITHUB_REF_NAME}")"
+          git fetch --no-tags origin \
+            "+refs/heads/10-answer:refs/remotes/origin/10-answer"
           if ! git merge-base --is-ancestor \
             "$release_sha" refs/remotes/origin/10-answer
           then

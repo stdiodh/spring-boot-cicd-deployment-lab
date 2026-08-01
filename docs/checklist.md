@@ -69,6 +69,7 @@
 ## trigger 정책
 
 - [ ] `deploy-v<major>.<minor>.<patch>` tag push만 production deploy를 시작합니다.
+- [ ] 원격 tag와 peeled `tag^{}` ref의 쌍으로 annotated tag를 판별합니다.
 - [ ] tag commit이 `origin/10-answer`에 포함되지 않으면 publish 전에 실패합니다.
 - [ ] 이미 원격에 push한 배포 tag는 이동하거나 재사용하지 않습니다.
 
