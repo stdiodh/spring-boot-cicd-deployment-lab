@@ -3,15 +3,18 @@ name: CI
 on:
   pull_request:
     branches:
-      - 10-implementation
       - 10-answer
   push:
     branches:
-      - 10-implementation
+      - 10-answer
+
+permissions:
+  contents: read
 
 jobs:
-  build_and_test:
+  test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -25,5 +28,8 @@ jobs:
       - name: Grant Gradle permission
         run: chmod +x gradlew
 
-      - name: Run build and test
-        run: ./gradlew test bootJar
+      - name: Run tests and build executable jar
+        run: ./gradlew clean test bootJar
+
+      - name: Check deployment artifact
+        run: test -f build/libs/app.jar
