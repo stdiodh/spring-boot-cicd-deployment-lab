@@ -142,7 +142,8 @@ CI는 Docker Hub push나 EC2 SSH를 수행하지 않습니다.
 ## 5. deploy workflow 확인
 
 `.github/workflows/deploy.yml`은 `deploy-v<major>.<minor>.<patch>` tag push만 받습니다.
-publish 전에 tag commit이 `origin/10-answer`에 포함되는지 확인합니다.
+publish 전에 원격 tag와 peeled `tag^{}` ref의 쌍으로 annotated tag인지 확인하고,
+tag commit이 workflow revision 및 `origin/10-answer`에 포함되는지 확인합니다.
 
 ### publish job
 
