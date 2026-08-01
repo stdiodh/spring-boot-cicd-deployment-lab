@@ -1,246 +1,222 @@
-# 이론 정리
+# Docker Runtime과 CI/CD 이론 정리
 
-> 이번 시퀀스는 한 번 성공한 배포 흐름을 GitHub Actions workflow와 shell script로 반복 가능하게 고정하는 단계입니다.
-> 이 브랜치에서는 완성된 CI, deploy workflow, `deploy.sh`, `check-deploy.sh`를 기준으로 build, deploy, verify가 어떤 순서와 실패 차단 기준을 갖는지 비교합니다.
+로컬에서 실행되는 source는 그대로 배포 단위가 되지 않습니다.
+이번 랩은 검증된 source를 실행 가능한 JAR로 만들고, 같은 JAR를 담은 이미지를 Docker Hub를 통해 EC2까지 전달한 뒤 실제 실행 결과를 확인합니다.
 
-## 1. Problem - 왜 운영 자동화가 필요한가
+<a id="seq-09"></a>
 
-수동 배포는 작업자가 기억하는 순서에 의존합니다. 테스트를 빼먹거나, release bundle 구성을 틀리거나, 배포 후 로그 확인을 생략할 수 있습니다.
-
-자동화의 목표는 단순히 배포를 빠르게 누르는 것이 아닙니다. 어떤 단계가 실패하면 다음 단계로 넘어가지 않게 만들고, 배포 성공 판정을 코드와 로그로 남기는 것입니다.
-
-정답 구현은 아래 문제를 해결합니다.
-
-- CI에서 build/test를 먼저 실행합니다.
-- deploy workflow의 build job이 release bundle을 만듭니다.
-- deploy job이 artifact를 받아 EC2에 업로드하고 `deploy.sh`를 실행합니다.
-- verify job이 `check-deploy.sh`를 실행해 컨테이너 상태, 로그, HTTP 응답을 확인합니다.
-- job 의존성으로 실패한 단계 이후 작업을 막습니다.
-
-## 2. Analyze - 정답 구현에서 선택한 자동화 기준
-
-| 기준 | 정답 구현의 선택 | 이유 |
-|---|---|---|
-| CI 기준 | `./gradlew test bootJar` | 배포 전 build/test를 고정합니다. |
-| job 분리 | build, deploy, verify | 실패 위치와 책임을 분명히 합니다. |
-| artifact | release bundle 업로드/다운로드 | build 결과를 deploy job에 전달합니다. |
-| server script | `deploy.sh` | 서버 재배포 명령을 workflow에서 분리합니다. |
-| verify script | `check-deploy.sh` | 배포 후 상태 확인을 별도 실패 기준으로 둡니다. |
-| secrets | GitHub Secrets 참조 | 실제 비밀값을 코드에 남기지 않습니다. |
-
-이 기준은 “배포 명령 실행”과 “서비스 정상 기동”을 분리합니다. deploy job이 끝났더라도 verify job이 실패하면 운영 성공으로 보지 않습니다.
-
-## 3. API / 실행 시퀀스 다이어그램
-
-### 3.1 build -> deploy -> verify 흐름
+## 09. 재현 가능한 실행 단위를 만듭니다
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant GitHub as GitHub Actions
-    participant Build as build job
-    participant Artifact as release artifact
-    participant Deploy as deploy job
-    participant EC2 as EC2 host
-    participant Verify as verify job
+    participant Source as Source
+    participant Gradle as Gradle
+    participant Jar as app.jar
+    participant Docker as Docker builder
+    participant Runtime as app container
 
-    GitHub->>Build: workflow_dispatch or push
-    Build->>Build: ./gradlew test bootJar
-    Build->>Artifact: upload release bundle
-    Deploy->>Artifact: download release bundle
-    Deploy->>EC2: upload files and write .env
-    Deploy->>EC2: run scripts/deploy.sh
-    Verify->>EC2: run scripts/check-deploy.sh
-    EC2-->>Verify: ps, logs, HTTP result
+    Source->>Gradle: clean test bootJar
+    Gradle-->>Jar: build/libs/app.jar
+    Jar->>Docker: exact COPY + APP_VERSION
+    Docker-->>Runtime: tagged image + revision label
+    Runtime-->>Source: process and HTTP evidence
 ```
 
-정답 workflow는 `needs`로 job 순서를 고정합니다. build가 실패하면 deploy는 실행되지 않고, deploy가 실패하면 verify는 실행되지 않습니다.
+| 단계 | 들어온 것 | 한 일 | 나간 것 또는 상태 |
+| --- | --- | --- | --- |
+| 1 | source와 test | `clean test bootJar` 실행 | 검증된 `app.jar` |
+| 2 | `app.jar`와 Dockerfile | exact COPY와 revision label 기록 | tagged image |
+| 3 | image와 runtime `.env` | Compose로 app process 시작 | running 또는 기동 실패 |
+| 4 | 실행 중인 app | container와 HTTP 상태 확인 | runtime 성공 또는 첫 실패 경계 |
 
-### 3.2 deploy script와 verify script 책임 분리
+### JAR 이름은 하나로 고정합니다
+
+Spring Boot 프로젝트는 executable JAR와 plain JAR가 함께 생길 수 있습니다.
+Dockerfile이 wildcard로 두 파일 중 하나를 우연히 고르면 build 결과를 재현하기 어렵습니다.
+
+이 레포는 다음 계약을 사용합니다.
+
+- `bootJar` 결과는 `build/libs/app.jar`입니다.
+- plain `jar` task는 비활성화합니다.
+- Dockerfile은 `build/libs/app.jar`만 복사합니다.
+- `.dockerignore`는 다른 build 결과를 제외하되 `app.jar`는 context에 포함합니다.
+
+```text
+source -> test -> build/libs/app.jar -> Dockerfile COPY -> image
+```
+
+JAR 파일명이 바뀌거나 파일이 없으면 Docker build가 바로 실패하므로 잘못된 산출물이 다음 단계로 넘어가지 않습니다.
+
+### image에는 source revision을 남깁니다
+
+Docker tag만으로는 컨테이너 안의 코드가 어느 commit에서 만들어졌는지 증명하기 어렵습니다.
+그래서 image build 시 `APP_VERSION`을 전달하고 OCI label에 기록합니다.
+
+```dockerfile
+ARG APP_VERSION=local
+LABEL org.opencontainers.image.revision="${APP_VERSION}"
+COPY build/libs/app.jar /app/app.jar
+```
+
+로컬에서는 `local`, GitHub Actions에서는 `${GITHUB_SHA}`가 revision이 됩니다.
+배포 검증은 tag뿐 아니라 이 label도 확인합니다.
+
+### image와 runtime config의 책임은 다릅니다
+
+image에는 실행 코드와 Java runtime을 넣습니다.
+DB 비밀번호, JWT secret, OAuth client secret 같은 환경별 값은 image에 넣지 않고 Compose와 `.env`로 주입합니다.
+
+| 구분 | 저장할 것 | 저장하지 않을 것 |
+| --- | --- | --- |
+| Docker image | `app.jar`, Java runtime, ENTRYPOINT, revision label | 운영 비밀번호와 token |
+| Compose | service 관계, port, environment 변수 이름 | 실제 secret 값 |
+| GitHub `production` Environment | 운영 DB, JWT, OAuth, Mail 값 | source와 JAR |
+| EC2 `.env` | Actions가 전달한 현재 runtime 값 | source, JAR, GitHub token |
+
+Actions는 개별 Secret과 Variable을 로그에 출력하지 않고 runtime `.env`로 조립합니다.
+검증된 파일만 EC2의 `.env.next`로 전송하고 권한을 `600`으로 제한한 뒤 기존 `.env`와 원자적으로 교체합니다.
+
+[Visual Lab에서 runtime 경계를 확인하기](./visual-lab/sequences/09/)
+
+<a id="seq-10"></a>
+
+## 10. image를 한 번 만들고 같은 결과를 배포합니다
+
+EC2에서 JAR를 받아 image를 다시 만들면 Actions가 검증한 결과와 서버가 실행한 결과 사이에 새 build가 생깁니다.
+이번 랩은 Actions가 image를 한 번만 만들고, Docker Hub가 그 image를 전달하도록 책임을 바꿉니다.
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Workflow as deploy.yml
-    participant DeployScript as scripts/deploy.sh
-    participant Compose as Docker Compose
-    participant App as App Container
-    participant VerifyScript as scripts/check-deploy.sh
+    participant Git as Git revision
+    participant CI as GitHub Actions
+    participant Hub as Docker Hub
+    participant EC2 as EC2
+    participant Stack as Compose stack
 
-    Workflow->>DeployScript: bash scripts/deploy.sh RELEASE_DIR
-    DeployScript->>Compose: keep dependencies running
-    DeployScript->>Compose: docker build
-    DeployScript->>Compose: up -d
-    Workflow->>VerifyScript: bash scripts/check-deploy.sh RELEASE_DIR
-    VerifyScript->>Compose: ps
-    VerifyScript->>App: docker logs
-    VerifyScript->>App: curl --fail http://localhost:8080/
+    Git->>CI: deploy-vX.Y.Z tag on 10-answer commit
+    CI->>CI: test + bootJar
+    CI->>CI: image build with revision label
+    CI->>Hub: push :commit-SHA and :deploy-vX.Y.Z
+    CI->>CI: production secrets -> runtime.env
+    CI->>EC2: .env.next + Compose + scripts
+    Hub->>EC2: pull exact :commit-SHA
+    EC2->>Stack: keep/start MySQL and Redis
+    EC2->>Stack: update app with exact SHA
+    Stack-->>CI: service health + image + readiness
 ```
 
-deploy script는 새 버전을 띄우는 책임이고, verify script는 띄운 뒤 실제 응답을 확인하는 책임입니다.
+| 단계 | 들어온 것 | 한 일 | 나간 것 또는 상태 |
+| --- | --- | --- | --- |
+| 1 | source와 commit SHA | test, `bootJar`, image build | 검증된 SHA image |
+| 2 | SHA image | Docker Hub에 SHA와 배포 tag push | registry 배포 입력 |
+| 3 | SHA tag와 production runtime | `.env` 전달, exact pull, Compose 기동 | 새 runtime stack |
+| 4 | 실행 중인 stack | health, image, revision, readiness 검증 | workflow 성공 또는 실패 |
 
-## 4. 계층 / DTO / 메시지 흐름
+### SHA tag가 배포 버전입니다
 
-이번 시퀀스는 API DTO보다 workflow artifact, secret 이름, shell argument가 메시지 역할을 합니다. 그래서 DTO 흐름은 “자동화 단계 사이에 어떤 산출물과 값이 전달되는가”로 읽습니다.
+workflow는 annotated tag가 가리키는 commit을 40자리 release SHA로 해석합니다.
+Actions는 같은 image에 두 tag를 게시합니다.
 
-### 4.1 자동화 계층 흐름
+| tag | 용도 |
+| --- | --- |
+| tag 대상 commit SHA | 실제 배포와 검증에 사용하는 불변 식별자 |
+| `deploy-vX.Y.Z` | 사람이 배포 이력을 찾는 불변 release 별칭 |
 
-```mermaid
-flowchart TD
-    A["push / workflow_dispatch"] --> B["CI build and test"]
-    B --> C["release bundle"]
-    C --> D["deploy job"]
-    D --> E["EC2 release directory"]
-    E --> F["scripts/deploy.sh"]
-    F --> G["docker compose up"]
-    G --> H["scripts/check-deploy.sh"]
-    H --> I["ps / logs / HTTP check"]
+배포 tag는 이미 원격에 게시한 뒤 이동하거나 재사용하지 않습니다.
+EC2 배포 입력은 항상 40자리 commit SHA image입니다.
+이미 게시된 SHA image는 revision label을 확인해 재사용하고 workflow에서 덮어쓰지 않습니다.
+배포 script는 SHA tag를 정확히 pull하고, verify job은 컨테이너의 image reference, revision label과 readiness 응답을 확인합니다.
+
+### gate는 실패 이후 단계를 닫습니다
+
+```text
+test + bootJar
+  -> image publish
+  -> EC2 deploy
+  -> runtime verify
 ```
 
-| 계층 | 정답 구현에서 확인할 책임 | 주요 파일 |
-|---|---|---|
-| CI | 코드가 빌드되고 테스트되는지 확인합니다. | `.github/workflows/ci.yml` |
-| Artifact | 배포에 필요한 파일 묶음을 전달합니다. | release bundle |
-| Deploy | 서버에 파일을 올리고 재배포를 실행합니다. | `.github/workflows/deploy.yml`, `scripts/deploy.sh` |
-| Verify | 배포 후 상태와 HTTP 응답을 확인합니다. | `scripts/check-deploy.sh` |
-| Secrets | 서버 접속과 운영 설정 값을 주입합니다. | `secrets.*` 참조 |
+- test 또는 `bootJar`가 실패하면 image를 게시하지 않습니다.
+- image 게시가 실패하면 SSH 배포를 시작하지 않습니다.
+- deploy가 실패하면 verify를 시작하지 않습니다.
+- image나 HTTP 검증이 실패하면 workflow 전체를 성공으로 판정하지 않습니다.
 
-### 4.2 자동화 메시지 흐름
+`needs`는 job 순서를 고정하고, deployment concurrency는 두 운영 배포가 동시에 EC2를 바꾸지 못하게 합니다.
 
-| 메시지/산출물 | 출발 | 도착 | 정답 구현에서 확인할 점 |
-|---|---|---|---|
-| jar | build job | release bundle | `build/libs/*.jar`가 `app.jar`로 복사됩니다. |
-| deploy files | build job | EC2 release directory | Dockerfile, deploy, scripts가 함께 업로드됩니다. |
-| artifact | build job | deploy job | `upload-artifact`와 `download-artifact`가 연결됩니다. |
-| `.env` 내용 | GitHub Secrets | EC2 `.env` | 운영 값은 workflow에서 서버 파일로 씁니다. |
-| `RELEASE_DIR` | workflow env | scripts | 작업 디렉터리를 통일합니다. |
-| verify result | EC2 app | verify job | `curl --fail` 실패가 workflow 실패가 됩니다. |
+### 첫 배포는 stack을 만들고 이후에는 앱만 갱신합니다
 
-## 5. Action - 정답 구현에서 비교할 코드 흐름
+MySQL과 Redis는 장기 상태 서비스이고 app은 commit마다 교체되는 배포 서비스입니다.
+10의 배포는 전체 Compose stack을 내리지 않습니다.
 
-### 5.1 CI workflow
+```text
+docker compose pull app
+docker compose up -d --no-recreate mysql redis
+docker compose up -d --no-deps app
+```
 
-`ci.yml`은 build와 test를 먼저 고정합니다.
+실제 script는 Compose가 SHA image를 해석하도록 값을 export한 뒤 app service만 다룹니다.
 
-비교 포인트:
+```bash
+export APP_IMAGE
+docker compose --env-file .env -f deploy/compose.prod.yaml pull app
+docker compose --env-file .env -f deploy/compose.prod.yaml up -d --no-recreate mysql redis
+docker compose --env-file .env -f deploy/compose.prod.yaml up -d --no-deps app
+```
 
-- PR과 push에서 실행 조건이 명확한가요?
-- JDK 21 설정과 Gradle 실행 권한이 준비되나요?
-- `./gradlew test bootJar`가 실패하면 workflow가 실패하나요?
+기존 MySQL과 Redis container가 있으면 다시 만들지 않고, 없거나 멈춘 서비스는 기동합니다.
+그 뒤 새 app image만 교체하므로 MySQL volume과 기존 데이터는 유지됩니다.
+첫 배포에서는 같은 명령이 MySQL, Redis, app을 모두 생성하므로 EC2에 `.env`를 미리 작성할 필요가 없습니다.
+MySQL과 Redis는 Compose 내부 network에서 연결하므로 host의 `3306`, `6379`를 공개하지 않습니다.
 
-### 5.2 Deploy workflow
+### 성공 판정에는 실행 증거가 필요합니다
 
-`deploy.yml`은 build, deploy, verify job을 나눕니다. build job은 release bundle을 만들고, deploy job은 EC2에 업로드하며, verify job은 배포 결과를 확인합니다.
+배포 명령이 종료됐다는 사실과 서비스가 정상이라는 사실은 다릅니다.
+workflow의 verify job은 다음 순서로 확인합니다.
 
-비교 포인트:
+1. 선언된 image reference가 요청한 SHA tag인지 확인합니다.
+2. OCI revision label이 `${GITHUB_SHA}`와 같은지 확인합니다.
+3. 제한된 횟수 안에 DB와 Redis를 포함한 readiness 응답이 오는지 확인합니다.
 
-- release bundle에 jar, Dockerfile, env 예시, deploy 디렉터리, scripts가 들어가나요?
-- artifact가 build job에서 deploy job으로 전달되나요?
-- deploy job이 `.env`를 Secrets 기반으로 만들고 `deploy.sh`를 실행하나요?
-- verify job이 `check-deploy.sh`를 별도로 실행하나요?
+실패하면 workflow 전체가 실패합니다.
+되돌릴 때는 정상 commit에 새로운 `deploy-vX.Y.Z` tag를 만들어 같은 gate를 다시 통과시킵니다.
 
-### 5.3 운영 scripts
+### secret은 사용 위치에 따라 나눕니다
 
-`deploy.sh`와 `check-deploy.sh`는 서버에서 실행할 명령을 분리합니다.
+| 위치 | 값 | 이유 |
+| --- | --- | --- |
+| Repository Secrets | Docker Hub 계정/token, EC2 host/user/key | image 게시와 원격 접속에 필요 |
+| `production` Secrets | DB, JWT, Mail, Google client secret | 민감한 runtime 값 |
+| `production` Variables | DB 사용자/이름, Google client ID, 공개 URL | 민감하지 않은 runtime 값 |
+| EC2 `.env` | Actions가 위 값을 Compose 입력으로 조립한 결과 | 실행 중인 container에 주입 |
 
-비교 포인트:
+Secret은 workflow 명령문에 직접 넣지 않고 step 환경변수로 전달합니다.
+Actions는 필수값과 dotenv 형식을 확인하고, 값 자체를 출력하지 않은 채 `.env.next`를 전송합니다.
+EC2에서 Compose 설정이 유효할 때만 기존 `.env`를 백업하고 교체합니다.
 
-- `deploy.sh`는 전체 compose를 내리지 않고 image build와 compose up을 담당하나요?
-- `check-deploy.sh`는 compose ps, logs, HTTP 응답 확인을 담당하나요?
-- 두 script 모두 `set -euo pipefail`로 실패를 숨기지 않나요?
+### production trigger는 10-answer의 배포 tag입니다
 
-## 6. Result - 확인할 결과와 남은 한계
+`main`은 가이드 브랜치이고 실제 실행 기준은 `10-answer`입니다.
+문서나 일반 commit push만으로 EC2가 바뀌지 않으며, 규칙에 맞는 annotated deploy tag를 push해야 배포가 시작됩니다.
+workflow는 tag commit이 `origin/10-answer`에 포함되는지도 publish 전에 확인합니다.
 
-정답 구현 기준으로 아래를 확인합니다.
+## 09와 10 연결
 
-- CI가 build/test를 먼저 실행합니다.
-- deploy workflow가 build, deploy, verify job을 분리합니다.
-- artifact로 release bundle이 job 사이를 이동합니다.
-- deploy script와 verify script 책임이 분리되어 있습니다.
-- verify HTTP check 실패는 workflow 실패로 이어집니다.
+`10-answer` 하나에서 먼저 다음 09 runtime 계약을 확인합니다.
 
-남는 한계도 함께 봅니다.
+- `build/libs/app.jar` 생성 계약
+- Dockerfile과 `.dockerignore`
+- `application-prod.yaml`
+- `deploy/compose.prod.yaml`
+- GitHub `production` Secret/Variable 계약
+- Docker와 Docker Compose가 설치된 EC2
 
-- 실제 EC2, GitHub Secrets, 네트워크 환경은 로컬에서 완전히 검증하기 어렵습니다.
-- rollback, blue-green, canary 같은 고급 배포 전략은 이번 범위가 아닙니다.
-- root path `http://localhost:8080/` 검증은 최소 기준이며, 운영에서는 별도 health endpoint가 더 적합할 수 있습니다.
+그다음 10의 CI gate, registry 게시, runtime 전달, exact image 배포, verify와 tag rollback을 확인합니다.
 
-## 7. 실무 포인트
+## 남은 범위
 
-- 자동화는 빠른 실행보다 실패를 멈추는 기준이 더 중요합니다.
-- workflow job은 실패 지점을 찾기 쉽도록 책임을 나누는 편이 좋습니다.
-- artifact는 build 결과를 deploy job에 전달하는 계약입니다.
-- script에는 서버에서 반복 실행할 명령을 두고, workflow에는 순서와 secret 전달을 둡니다.
-- verify는 container 상태뿐 아니라 애플리케이션 응답까지 확인해야 합니다.
-- secret 값은 로그에 나오지 않게 하고, workflow에는 secret 이름만 남깁니다.
+이번 랩은 공개 Docker Hub 저장소, 단일 EC2, Docker Compose를 기준으로 합니다.
+private registry 인증, Blue-Green, Canary, Kubernetes, Terraform, observability와 알림은 후속 운영 주제입니다.
 
-## 8. 용어 정리
-
-### CI
-
-- 뜻
-  변경된 코드가 빌드되고 테스트되는지 자동으로 확인하는 흐름입니다.
-- 왜 중요한가
-  깨진 코드가 배포 단계로 넘어가는 것을 막습니다.
-- 이번 코드에서는 어디에 보이는가
-  `.github/workflows/ci.yml`
-- 짧은 상황 예시
-  PR이나 push에서 `./gradlew test bootJar`가 실패하면 배포 전 단계에서 멈춥니다.
-
-### CD
-
-- 뜻
-  검증된 결과물을 실행 환경으로 전달하고 배포하는 흐름입니다.
-- 왜 중요한가
-  사람이 매번 같은 서버 명령을 손으로 반복하지 않게 합니다.
-- 이번 코드에서는 어디에 보이는가
-  `.github/workflows/deploy.yml`, `scripts/deploy.sh`
-- 짧은 상황 예시
-  release bundle을 EC2에 올리고 compose로 앱을 다시 띄웁니다.
-
-### Artifact
-
-- 뜻
-  build 결과물과 배포에 필요한 파일을 묶은 산출물입니다.
-- 왜 중요한가
-  build job의 결과를 deploy job이 같은 기준으로 사용할 수 있습니다.
-- 이번 코드에서는 어디에 보이는가
-  `actions/upload-artifact`, `actions/download-artifact`
-- 짧은 상황 예시
-  jar, Dockerfile, deploy 디렉터리, scripts를 release bundle로 묶습니다.
-
-### Verify
-
-- 뜻
-  배포 후 서비스가 실제로 살아 있는지 확인하는 단계입니다.
-- 왜 중요한가
-  배포 명령 종료와 서비스 정상 동작은 다른 기준이기 때문입니다.
-- 이번 코드에서는 어디에 보이는가
-  `scripts/check-deploy.sh`, verify job
-- 짧은 상황 예시
-  `curl --fail --silent http://localhost:8080/`가 실패하면 verify job이 실패합니다.
-
-### Secret
-
-- 뜻
-  코드에 직접 쓰면 안 되는 운영 비밀값입니다.
-- 왜 중요한가
-  SSH key, DB password, JWT secret 같은 값이 Git에 남으면 보안 사고로 이어질 수 있습니다.
-- 이번 코드에서는 어디에 보이는가
-  `${{ secrets.EC2_SSH_KEY }}`, `${{ secrets.PROD_DB_PASSWORD }}`
-- 짧은 상황 예시
-  workflow에는 값 자체가 아니라 secret 이름만 남깁니다.
-
-## 9. 다음 구현으로 연결되는 지점
-
-`docs/implementation.md`와 `docs/checklist.md`를 볼 때는 YAML 문법보다 job 의존성, artifact 전달, deploy/verify script 책임 분리를 먼저 확인합니다. 다음 리팩토링 시퀀스에서는 자동화가 지켜주는 build/test 기준을 바탕으로 코드 구조를 더 읽기 좋게 다룹니다.
-
-<details>
-<summary>멘토용 설명 포인트</summary>
-
-- starter와 비교할 때 YAML 문법보다 job 의존성과 실패 차단 지점을 먼저 설명하게 합니다.
-- deploy와 verify를 나눈 이유를 운영 성공 판정 기준으로 연결합니다.
-- secret 값 자체가 아니라 secret 이름과 주입 위치만 확인하게 합니다.
-- verify가 실패하는 상황을 일부러 상상하게 해서 자동화의 성공 기준을 설명하게 합니다.
-
-</details>
+[Visual Lab에서 CI/CD gate를 확인하기](./visual-lab/sequences/10/)
