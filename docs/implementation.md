@@ -8,14 +8,17 @@
 test + bootJar
   -> Docker image build
   -> Docker Hub SHA tag
-  -> production secret으로 runtime env 생성
+  -> production 도메인의 EC2 DNS 연결 검증
+  -> production 설정으로 HTTPS runtime env 생성
   -> EC2 exact pull
-  -> Compose stack create 또는 app update
-  -> health/image/revision/readiness verify
+  -> HTTP challenge와 인증서 bootstrap
+  -> Compose stack create 또는 app + Nginx update
+  -> health/image/revision/HTTPS readiness/redirect verify
 ```
 
 EC2에서 source나 JAR를 다시 build하지 않습니다.
 Actions가 검증한 source로 만든 image를 그대로 실행하는 것이 핵심입니다.
+`09-answer`와 `deploy-v1.0.3`은 Spring Boot `8080`을 직접 공개한 HTTP 기준으로 고정하고, 아래 HTTPS 변경은 `10-answer`에서 진행합니다.
 
 ## 2. 09 runtime 계약 확인
 
@@ -101,22 +104,29 @@ GitHub의 `production` Environment에는 애플리케이션 runtime 값을 나�
 | Variable | `PROD_DB_USERNAME` | `aandi` |
 | Variable | `PROD_MYSQL_DATABASE` | `aandi_lab` |
 | Variable | `PROD_GOOGLE_CLIENT_ID` | Google OAuth client ID |
-| Optional Variable | `PROD_FRONTEND_URL` | 운영 프런트 URL, 생략하면 EC2 `:8080` 기준 |
-| Optional Variable | `PROD_PASSWORD_RESET_URL` | 운영 비밀번호 재설정 URL, 생략하면 EC2 `:8080` 기준 |
-| Optional Variable | `PROD_WEBSOCKET_ALLOWED_ORIGIN_PATTERNS` | 허용할 운영 origin, 생략하면 EC2 `:8080` 기준 |
+| Variable | `PROD_DOMAIN` | DNS를 제어하며 EC2로 연결한 소문자 FQDN |
+| Variable | `PROD_CERTBOT_EMAIL` | 인증서 운영 연락 이메일 |
+| Optional Variable | `PROD_FRONTEND_URL` | 운영 프런트 URL, 생략하면 `https://<PROD_DOMAIN>/realtime-demo.html` |
+| Optional Variable | `PROD_PASSWORD_RESET_URL` | 운영 비밀번호 재설정 URL, 생략하면 `https://<PROD_DOMAIN>/auth-demo.html` |
+| Optional Variable | `PROD_WEBSOCKET_ALLOWED_ORIGIN_PATTERNS` | 허용할 운영 origin, 생략하면 `https://<PROD_DOMAIN>` |
 
 workflow는 `DB_PASSWORD`와 `MYSQL_PASSWORD`를 같은 `PROD_DB_PASSWORD`에서 만들고 root 비밀번호는 분리합니다.
+`PROD_DOMAIN`의 모든 A 레코드는 `EC2_HOST`와 같은 IPv4에 연결되어야 하고 AAAA 레코드는 없어야 하며 URL Variables는 모두 `https://`를 사용합니다.
+최초 HTTPS 전환 뒤 같은 EC2에서 `PROD_DOMAIN`과 `PROD_CERTBOT_EMAIL`을 변경하지 않습니다.
 workflow는 `EC2_HOST`를 대상으로 `ssh-keyscan`을 실행해 `known_hosts`를 준비합니다.
 
-### Step 3. 09 EC2 scaffold를 확인합니다
+### Step 3. EC2 HTTPS 전제 조건을 확인합니다
 
 10을 실행하기 전에 EC2에 다음 상태가 있어야 합니다.
 
 - Docker 설치
 - Compose plugin 설치와 checksum 검증에 사용할 `curl`, `sha256sum` 설치
 - SSH 사용자가 Docker 명령을 실행할 수 있거나 passwordless sudo를 사용할 수 있음
-- application `8080` 접근 허용
+- 운영 도메인의 모든 A 레코드가 `EC2_HOST`와 같은 인스턴스를 가리키고 AAAA 레코드는 없음
+- Security Group에서 HTTP challenge와 redirect용 `80`, HTTPS용 `443` 허용
 - MySQL `3306`과 Redis `6379`는 외부 인바운드에서 차단
+- 첫 09→10 전환은 자동 HTTP rollback을 위해 기존 `8080` 규칙을 HTTPS verify 성공까지 유지한 뒤 제거
+- 신규 10 배포와 HTTPS 전환 완료 환경은 application `8080` 외부 인바운드를 차단
 
 Compose plugin이 아직 없으면 workflow가 공식 release의 고정 버전을 checksum 검증 후
 배포 사용자 계정의 Docker CLI plugin 경로에 설치합니다.
@@ -124,8 +134,8 @@ Docker daemon 권한이 없으면 workflow가 passwordless sudo로 사용자를 
 다음 SSH session에서 권한 적용 여부를 확인합니다.
 `docker` 그룹은 root 수준의 Docker 제어 권한을 가지므로 전용 배포 사용자에게만 허용합니다.
 
-EC2 runtime `.env`, MySQL, Redis는 미리 만들지 않습니다.
-첫 workflow가 `.env`를 전달하고 Compose로 세 서비스를 생성합니다.
+EC2 runtime `.env`와 container는 미리 만들지 않습니다.
+첫 workflow가 `.env`를 전달하고 Compose로 MySQL, Redis, app, Nginx와 Certbot을 생성합니다.
 
 ## 4. CI workflow 확인
 
@@ -141,18 +151,20 @@ CI는 Docker Hub push나 EC2 SSH를 수행하지 않습니다.
 
 ## 5. deploy workflow 확인
 
-`.github/workflows/deploy.yml`은 `deploy-v<major>.<minor>.<patch>` tag push만 받습니다.
+`.github/workflows/deploy.yml`은 새로 만든 `deploy-https-v<major>.<minor>.<patch>` annotated tag push만 받습니다.
+전용 prefix는 `09-answer`의 구 `deploy-vX.Y.Z` HTTP workflow와 HTTPS 배포 경로를 분리하며, force-move event는 거부합니다.
 publish 전에 원격 tag와 peeled `tag^{}` ref의 쌍으로 annotated tag인지 확인하고,
 tag commit이 workflow revision 및 `origin/10-answer`에 포함되는지 확인합니다.
 
 ### publish job
 
-1. test와 `bootJar`를 실행합니다.
-2. Docker Hub에 로그인합니다.
-3. annotated tag가 가리키는 commit을 `RELEASE_SHA`로 해석합니다.
-4. `${RELEASE_SHA}` image가 이미 있으면 revision label을 확인하고 그대로 재사용합니다.
-5. SHA image가 없을 때만 `APP_VERSION=${RELEASE_SHA}`로 build하고 SHA tag를 push합니다.
-6. 같은 image에 `${GITHUB_REF_NAME}` release tag를 추가해 push합니다.
+1. shell 문법과 Nginx HTTP·HTTPS template의 실제 `nginx -t`를 검사합니다.
+2. test와 `bootJar`를 실행합니다.
+3. Docker Hub에 로그인합니다.
+4. annotated tag가 가리키는 commit을 `RELEASE_SHA`로 해석합니다.
+5. `${RELEASE_SHA}` image가 이미 있으면 revision label을 확인하고 그대로 재사용합니다.
+6. SHA image가 없을 때만 `APP_VERSION=${RELEASE_SHA}`로 build하고 SHA tag를 push합니다.
+7. 같은 image에 `${GITHUB_REF_NAME}` release tag를 추가해 push합니다.
 
 학생이 registry 경계를 직접 읽을 수 있도록 login, build, push는 shell 명령으로 드러냅니다.
 token은 명령 인자가 아니라 표준 입력으로 전달합니다.
@@ -178,37 +190,57 @@ docker push "$release_image"
 
 1. `production` Secret과 Variable의 필수값을 검사합니다.
 2. 값 자체를 출력하지 않고 권한 `600`의 임시 `runtime.env`를 만듭니다.
-3. exact SHA `APP_IMAGE`를 주입해 Compose 설정을 먼저 검증합니다.
-4. Compose와 설치·배포·점검 script, `runtime.env`를 EC2의 `.env.next`로 복사합니다.
-5. EC2에서도 `.env.next`로 Compose 설정을 다시 검증합니다.
-6. 기존 `.env`를 `.env.previous`로 보존하고 `.env.next`를 `.env`로 원자적으로 교체합니다.
-7. SHA image를 정확히 pull합니다.
-8. `up -d --no-recreate mysql redis`로 첫 배포에는 의존 서비스를 만들고 이후에는 보존합니다.
-9. `up -d --no-deps app`으로 변경된 app만 교체합니다.
+3. `PROD_DOMAIN`의 모든 A 레코드가 `EC2_HOST`와 같고 AAAA 레코드가 없는지 확인합니다.
+4. exact SHA `APP_IMAGE`, `APP_DOMAIN`, `CERTBOT_EMAIL`을 주입해 Compose 설정을 먼저 검증합니다.
+5. Compose, Nginx template과 script를 `.deploy-next`, `runtime.env`를 `.env.next`로 복사합니다.
+6. EC2의 staging bundle과 `.env.next`로 필수 파일, shell 문법과 Compose 설정을 다시 검증합니다.
+7. 현재 bundle을 완성된 `.deploy.previous` snapshot으로 전환하고 `.env.previous`를 보존한 뒤, trap이 감싼 구간에서 새 파일을 설치합니다.
+8. `up -d --no-recreate mysql redis`로 상태 서비스를 보존합니다.
+9. 인증서가 없거나 유효기간이 24시간 이하이면 HTTP challenge Nginx를 띄워 Certbot webroot 방식으로 발급 또는 갱신합니다.
+10. SHA image를 정확히 pull하고 app과 HTTPS Nginx를 다시 만든 뒤 Certbot 갱신 service를 기동합니다.
 
 MySQL은 `MYSQL_USER`와 `MYSQL_PASSWORD`로 애플리케이션 전용 계정을 초기화합니다.
 MySQL과 Redis의 host port는 열지 않고 app이 Compose service 이름으로 접근합니다.
 MySQL named volume에는 고정 이름을 사용하며 배포 script는 `down -v`를 실행하지 않습니다.
 
+Compose는 다음 공개 경계를 사용합니다.
+
+| 서비스 | 고정 image | host port |
+| --- | --- | --- |
+| `app` | exact SHA application image | 없음, Compose 내부 `8080`만 사용 |
+| `nginx` | `nginx:1.28.3-alpine` | `80`, `443` |
+| `certbot` | `certbot/certbot:v5.7.0` | 없음 |
+
+Nginx는 HTTP challenge 경로를 유지하면서 일반 HTTP 요청을 HTTPS로 이동하고 `app:8080`으로 reverse proxy합니다.
+`X-Forwarded-*`와 WebSocket `Upgrade`, `Connection` header를 전달하며 Spring Boot는 `forward-headers-strategy: framework`로 이를 해석합니다.
+Certbot은 12시간마다 갱신을 시도하고 Nginx는 6시간마다 reload합니다.
+배포 또는 verify 실패 시 이전 bundle, runtime 환경과 image를 함께 복원한 뒤 이전 HTTP 또는 HTTPS readiness를 다시 검사합니다.
+
 ### verify job
 
-1. app container가 요청한 SHA image reference를 사용하는지 확인합니다.
-2. OCI revision label이 tag 대상 commit SHA인지 확인합니다.
-3. DB와 Redis를 포함한 Actuator readiness 응답을 재시도합니다.
-4. 실패하면 같은 tag를 이동하지 않고 정상 commit에 새 배포 tag를 만듭니다.
+1. MySQL, Redis, Nginx가 healthy이고 Certbot이 running인지 확인합니다.
+2. app container가 요청한 SHA image reference와 image ID를 사용하는지 확인합니다.
+3. OCI revision label이 tag 대상 commit SHA인지 확인합니다.
+4. `https://<PROD_DOMAIN>/actuator/health/readiness` 응답을 재시도합니다.
+5. HTTP 요청이 같은 도메인의 HTTPS URL로 이동하는지 확인합니다.
+6. GitHub runner에서도 공개 도메인의 HTTPS readiness를 확인합니다.
+7. 내부 또는 외부 검증이 실패하면 이전 bundle, runtime 환경과 image를 자동 복구하고 시도한 workflow는 실패로 남깁니다.
+8. 이력상 rollback 배포가 필요하면 같은 tag를 이동하지 않고 정상 HTTPS commit에 더 높은 새 배포 tag를 만듭니다.
 
 `publish -> deploy -> verify`는 `needs`로 연결되어 앞 단계 실패 시 다음 단계가 열리지 않습니다.
 `production-deployment` concurrency는 운영 배포를 직렬화합니다.
 
 ## 6. script를 개별 확인하는 방법
 
-실제 pull과 app 갱신은 registry와 Docker가 설치된 EC2가 필요합니다.
+실제 pull과 HTTPS stack 갱신은 registry와 Docker가 설치된 EC2가 필요합니다.
 workflow가 `.env`를 전달한 뒤 서버에서 같은 인자로 확인할 수 있습니다.
 
 ```bash
 bash scripts/deploy.sh \
   "$PWD" \
-  "docker.io/your-dockerhub-username/aandi-deployment-runtime-lab:commit-sha"
+  "docker.io/your-dockerhub-username/aandi-deployment-runtime-lab:commit-sha" \
+  "api.example.com" \
+  "operator@example.com"
 ```
 
 검증:
@@ -217,7 +249,8 @@ bash scripts/deploy.sh \
 bash scripts/check-deploy.sh \
   "$PWD" \
   "docker.io/your-dockerhub-username/aandi-deployment-runtime-lab:commit-sha" \
-  "commit-sha"
+  "commit-sha" \
+  "api.example.com"
 ```
 
 실패하면 출력된 Compose 상태와 app log에서 첫 실패 원인을 확인합니다.
@@ -229,8 +262,8 @@ bash scripts/check-deploy.sh \
 ```bash
 git switch 10-answer
 git pull --ff-only origin 10-answer
-git tag -a deploy-v1.0.0 -m "Deploy v1.0.0"
-git push origin deploy-v1.0.0
+git tag -a deploy-https-v1.0.0 -m "Deploy HTTPS v1.0.0"
+git push origin deploy-https-v1.0.0
 ```
 
 배포 version을 되돌릴 때도 기존 tag를 이동하지 않고 정상 commit에 새 tag를 만듭니다.
@@ -240,31 +273,33 @@ git push origin deploy-v1.0.0
 - test 성공 뒤 image 게시
 - SHA tag로 배포
 - GitHub runtime 값으로 `.env` 생성과 원자적 교체
-- 첫 배포에는 Compose stack 생성, 이후에는 app-only 갱신
+- 첫 배포에는 HTTP challenge로 인증서 발급, 이후에는 자동 갱신
+- app은 내부 `8080`, 외부는 Nginx `80/443`만 사용
 - exact image와 revision 검증
-- service health와 readiness 실패를 workflow 실패로 처리
+- service health, HTTPS readiness와 HTTP redirect 실패를 workflow 실패로 처리
 
 ## 8. 완료 전 확인
 
 ```bash
 ./gradlew clean test bootJar
-bash -n scripts/deploy.sh
-bash -n scripts/check-deploy.sh
+bash -n scripts/ensure-compose.sh scripts/deploy.sh scripts/check-deploy.sh
 docker compose --env-file .env.example -f deploy/compose.prod.yaml config
 git diff --check
 ```
 
-Docker Hub push, SSH, 실제 HTTP 검증은 외부 환경이 준비된 workflow 실행으로 확인합니다.
+Docker Hub push, SSH, 실제 HTTPS 검증은 외부 환경이 준비된 workflow 실행으로 확인합니다.
 
 <details>
 <summary>멘토용 진행 포인트</summary>
 
-- `10-answer` 안에서 09 runtime 계약을 먼저 확인한 뒤 10 자동화 흐름으로 이동합니다.
+- `09-answer`와 `deploy-v1.0.3`의 HTTP 기준을 먼저 확인한 뒤 `10-answer` HTTPS 흐름으로 이동합니다.
 - 학생이 `latest`가 아니라 SHA tag를 배포 입력으로 설명하는지 확인합니다.
 - annotated deploy tag와 실제 SHA image의 역할을 구분하는지 확인합니다.
 - Secret, Variable, EC2 runtime `.env`의 전달 경계를 설명하는지 확인합니다.
-- deploy 명령 성공과 service health/image/revision/readiness 검증 성공을 구분하게 합니다.
-- 전체 Compose를 내리지 않고 app만 갱신하는 이유를 DB와 Redis 상태 보존에 연결합니다.
+- deploy 명령 성공과 service health/image/revision/HTTPS readiness/redirect 검증 성공을 구분하게 합니다.
+- app의 `8080`을 닫고 Nginx의 `80/443`만 공개하는 이유를 설명하게 합니다.
+- HTTP challenge bootstrap, Certbot 갱신과 Nginx reload의 역할을 구분하게 합니다.
+- 전체 Compose를 내리지 않는 이유를 DB와 Redis 상태 보존에 연결합니다.
 - 기존 MySQL volume에서는 Secret만 바꿔도 DB 계정 비밀번호가 자동 회전되지 않음을 설명합니다.
 
 </details>
