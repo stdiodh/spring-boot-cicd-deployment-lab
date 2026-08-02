@@ -33,6 +33,7 @@ class SecurityConfig(
                         "/ws-chat",
                         "/ws-chat/**",
                         "/swagger/**",
+                        "/swagger-ui/**",
                         "/v3/api-docs/**",
                         "/auth/signup",
                         "/auth/login",
