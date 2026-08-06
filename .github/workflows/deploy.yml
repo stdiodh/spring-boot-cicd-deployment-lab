@@ -121,6 +121,37 @@ jobs:
               nginx -t
           done
 
+          validation_container="aandi-nginx-template-validation"
+          cleanup_validation_container() {
+            docker rm -f "$validation_container" >/dev/null 2>&1 || true
+          }
+          trap cleanup_validation_container EXIT
+
+          APP_DOMAIN="$test_domain" NGINX_TEMPLATE=http.conf.template \
+            docker compose \
+              --env-file .env.example \
+              -f deploy/compose.prod.yaml \
+              run --detach --no-deps --name "$validation_container" nginx \
+              >/dev/null
+
+          runtime_config=""
+          for attempt in {1..10}; do
+            if runtime_config="$(
+              docker exec "$validation_container" nginx -T 2>&1
+            )"
+            then
+              break
+            fi
+            sleep 1
+          done
+
+          grep -Fq "server_name ${test_domain};" <<< "$runtime_config"
+          grep -Fq "location ^~ /.well-known/acme-challenge/" \
+            <<< "$runtime_config"
+
+          cleanup_validation_container
+          trap - EXIT
+
       - name: Run tests and build executable jar
         run: ./gradlew clean test bootJar
 
