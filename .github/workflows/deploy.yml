@@ -198,8 +198,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: production
-    outputs:
-      app_domain: ${{ steps.runtime.outputs.app_domain }}
     env:
       APP_IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/aandi-deployment-runtime-lab:${{ needs.publish.outputs.release_sha }}
       APP_DOMAIN: ${{ vars.PROD_DOMAIN }}
@@ -365,7 +363,6 @@ jobs:
             --env-file "$runtime_env" \
             -f deploy/compose.prod.yaml \
             config --quiet
-          printf 'app_domain=%s\n' "$PROD_DOMAIN" >> "$GITHUB_OUTPUT"
 
       - name: Validate production DNS
         run: |
@@ -689,10 +686,11 @@ jobs:
       - deploy
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    environment: production
     env:
       APP_IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/aandi-deployment-runtime-lab:${{ needs.publish.outputs.release_sha }}
       RELEASE_SHA: ${{ needs.publish.outputs.release_sha }}
-      APP_DOMAIN: ${{ needs.deploy.outputs.app_domain }}
+      APP_DOMAIN: ${{ vars.PROD_DOMAIN }}
     steps:
       - name: Configure SSH
         env:
