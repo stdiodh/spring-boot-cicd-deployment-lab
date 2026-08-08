@@ -1,5 +1,7 @@
 # CI/CD와 HTTPS 운영 배포 이론
 
+<a id="seq-10"></a>
+
 로컬에서 실행되는 source 자체는 운영 배포 단위가 아닙니다.
 이번 랩은 `main`의 검증된 source를 실행 가능한 JAR로 만들고, 같은 JAR를 담은 불변 Docker 이미지를 Docker Hub를 통해 EC2에 전달한 뒤 HTTPS 경계에서 실행 증거를 확인합니다.
 
