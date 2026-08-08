@@ -2,22 +2,22 @@ name: Deploy to EC2
 
 on:
   push:
-    tags:
-      - "deploy-https-v*.*.*"
+    branches:
+      - main
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: production-deployment
+  group: spring-boot-cicd-deployment-lab-production
   cancel-in-progress: false
 
 env:
-  IMAGE_REPOSITORY: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/aandi-deployment-runtime-lab
-  RELEASE_TAG: ${{ github.ref_name }}
+  IMAGE_REPOSITORY: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/aandi-cicd-deployment-lab
   EC2_HOST: ${{ secrets.EC2_HOST }}
   EC2_USERNAME: ${{ secrets.EC2_USERNAME }}
-  RELEASE_DIR: /home/${{ secrets.EC2_USERNAME }}/aandi-deployment-runtime-lab
+  RELEASE_DIR: /home/${{ secrets.EC2_USERNAME }}/aandi-cicd-deployment-lab
   COMPOSE_VERSION: v5.1.4
 
 jobs:
@@ -32,53 +32,22 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Validate deployment tag
-        id: release
-        env:
-          EVENT_CREATED: ${{ github.event.created }}
-          EVENT_FORCED: ${{ github.event.forced }}
+      - name: Validate main deployment ref
         run: |
           set -euo pipefail
 
-          if [[ "$EVENT_CREATED" != "true" || "$EVENT_FORCED" != "false" ]]; then
-            echo "::error::Deployment tags must be newly created and must not be force-moved."
+          if [[ "$GITHUB_REF" != "refs/heads/main" || "$GITHUB_REF_NAME" != "main" ]]; then
+            echo "::error::Production deployment only accepts the main branch ref."
             exit 1
           fi
-          if [[ ! "$GITHUB_REF_NAME" =~ ^deploy-https-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo \
-              "::error::Deployment tag must match deploy-https-v<major>.<minor>.<patch>."
+          if [[ ! "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::GITHUB_SHA must be an exact 40-character commit SHA."
             exit 1
           fi
-
-          tag_ref="refs/tags/${GITHUB_REF_NAME}"
-          tag_refs="$(git ls-remote --tags origin "$tag_ref" "${tag_ref}^{}")"
-          tag_object_sha="$(
-            awk -v expected="$tag_ref" '$2 == expected { print $1 }' <<< "$tag_refs"
-          )"
-          release_sha="$(
-            awk -v expected="${tag_ref}^{}" '$2 == expected { print $1 }' <<< "$tag_refs"
-          )"
-
-          if [[ ! "$tag_object_sha" =~ ^[0-9a-f]{40}$ ]] || \
-            [[ ! "$release_sha" =~ ^[0-9a-f]{40}$ ]]
-          then
-            echo "::error::Deployment tags must be annotated tags."
+          if [[ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]]; then
+            echo "::error::Checked out revision does not match GITHUB_SHA."
             exit 1
           fi
-          if [[ "$release_sha" != "$GITHUB_SHA" ]]; then
-            echo "::error::Remote deployment tag does not match the workflow revision."
-            exit 1
-          fi
-
-          git fetch --no-tags origin \
-            "+refs/heads/10-answer:refs/remotes/origin/10-answer"
-          if ! git merge-base --is-ancestor \
-            "$release_sha" refs/remotes/origin/10-answer
-          then
-            echo "::error::Deployment tags must reference a commit contained in 10-answer."
-            exit 1
-          fi
-          printf 'sha=%s\n' "$release_sha" >> "$GITHUB_OUTPUT"
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -121,7 +90,7 @@ jobs:
               nginx -t
           done
 
-          validation_container="aandi-nginx-template-validation"
+          validation_container="aandi-cicd-nginx-template-validation"
           cleanup_validation_container() {
             docker rm -f "$validation_container" >/dev/null 2>&1 || true
           }
@@ -164,12 +133,30 @@ jobs:
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: printf '%s' "$DOCKERHUB_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
 
+      - name: Validate exact origin main revision
+        id: release
+        run: |
+          set -euo pipefail
+
+          git fetch --no-tags origin \
+            "+refs/heads/main:refs/remotes/origin/main"
+          origin_main_sha="$(git rev-parse refs/remotes/origin/main)"
+
+          if [[ ! "$origin_main_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::origin/main did not resolve to an exact 40-character commit SHA."
+            exit 1
+          fi
+          if [[ "$GITHUB_SHA" != "$origin_main_sha" ]]; then
+            echo "::error::GITHUB_SHA is not the current origin/main revision."
+            exit 1
+          fi
+          printf 'sha=%s\n' "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+
       - name: Build and publish image
         env:
           RELEASE_SHA: ${{ steps.release.outputs.sha }}
         run: |
           sha_image="${IMAGE_REPOSITORY}:${RELEASE_SHA}"
-          release_image="${IMAGE_REPOSITORY}:${RELEASE_TAG}"
 
           if docker pull "$sha_image"; then
             existing_revision="$(
@@ -181,17 +168,14 @@ jobs:
               echo "::error::Existing SHA image has a different revision label."
               exit 1
             fi
-            docker tag "$sha_image" "$release_image"
           else
             docker build \
               --build-arg APP_VERSION="$RELEASE_SHA" \
-              --build-arg APP_RELEASE="$RELEASE_TAG" \
+              --build-arg APP_RELEASE="$RELEASE_SHA" \
               --tag "$sha_image" \
-              --tag "$release_image" \
               .
             docker push "$sha_image"
           fi
-          docker push "$release_image"
 
   deploy:
     needs: publish
@@ -199,7 +183,7 @@ jobs:
     timeout-minutes: 30
     environment: production
     env:
-      APP_IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/aandi-deployment-runtime-lab:${{ needs.publish.outputs.release_sha }}
+      APP_IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/aandi-cicd-deployment-lab:${{ needs.publish.outputs.release_sha }}
       APP_DOMAIN: ${{ vars.PROD_DOMAIN }}
       CERTBOT_EMAIL: ${{ vars.PROD_CERTBOT_EMAIL }}
     steps:
@@ -688,7 +672,7 @@ jobs:
     timeout-minutes: 30
     environment: production
     env:
-      APP_IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/aandi-deployment-runtime-lab:${{ needs.publish.outputs.release_sha }}
+      APP_IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/aandi-cicd-deployment-lab:${{ needs.publish.outputs.release_sha }}
       RELEASE_SHA: ${{ needs.publish.outputs.release_sha }}
       APP_DOMAIN: ${{ vars.PROD_DOMAIN }}
     steps:

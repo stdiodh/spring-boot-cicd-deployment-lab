@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 500" role="img" aria-labelledby="title desc">
+  <title id="title">main 배포에서 HTTPS 검증과 rollback까지의 세 경로</title>
+  <desc id="desc">Release 경로는 main의 현재 commit을 exact SHA image와 staging bundle로 고정하고, HTTPS 전환 경로는 DNS와 외부 80의 HTTP-01을 거쳐 Nginx 443을 열며, Verify와 rollback 경로는 외부 readiness 성공 또는 이전 runtime 복구를 판정한다. 첫 HTTPS 성공 뒤에는 공개 8080을 닫는다.</desc>
+  <metadata>Source: A&amp;I Sequence 10 theory, implementation, deploy workflow, Compose, Nginx templates, deploy and verify scripts. Updated 2026-08-02. License: repository policy; no standalone license grant.</metadata>
+  <defs>
+    <marker id="arrow" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" refX="11" refY="6" orient="auto">
+      <path d="M0 0 12 6 0 12Z" fill="#2955E4"/>
+    </marker>
+    <marker id="failure-arrow" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" refX="11" refY="6" orient="auto">
+      <path d="M0 0 12 6 0 12Z" fill="#B4233C"/>
+    </marker>
+    <style>
+      text{font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif;fill:#111B3F}
+      .lane-frame{fill:#FFFFFF;stroke:#D8DDEB;stroke-width:2.5}
+      .node{stroke-width:2.5}
+      .runtime{fill:#EEF2F7;stroke:#52627A}
+      .integration{fill:#FFF4D6;stroke:#926000}
+      .interface{fill:#E6F4F7;stroke:#0E7490}
+      .resource{fill:#EAF5EE;stroke:#2C7352}
+      .outside{fill:#F1F5F9;stroke:#5B677A}
+      .failure{fill:#EEF4FF;stroke:#B4233C;stroke-dasharray:8 6}
+      .flow{fill:none;stroke:#2955E4;stroke-width:3.5;marker-end:url(#arrow)}
+      .failure-flow{fill:none;stroke:#B4233C;stroke-width:3.5;stroke-dasharray:8 6;marker-end:url(#failure-arrow)}
+      .lane-name{font-size:25px;font-weight:900;fill:#0C2691;text-anchor:middle}
+      .lane-purpose{font-size:25px;font-weight:750;fill:#4B587C;text-anchor:middle}
+      .name{font-size:25px;font-weight:850;text-anchor:middle}
+      .body{font-size:25px;font-weight:650;fill:#4B587C;text-anchor:middle}
+      .failure-text{fill:#B4233C}
+    </style>
+  </defs>
+
+  <rect width="720" height="500" rx="22" fill="#F8F9FB"/>
+
+  <g data-semantic="lane" aria-label="Release 경로">
+    <rect x="18" y="18" width="216" height="464" rx="16" class="lane-frame"/>
+    <text x="126" y="58" class="lane-name">Release</text>
+    <text x="126" y="90" class="lane-purpose">main · SHA · stage</text>
+
+    <g data-layer="outside">
+      <rect x="38" y="110" width="176" height="94" rx="12" class="node outside"/>
+      <text x="126" y="139" class="name">Main deploy</text>
+      <text x="126" y="165" class="body">push 또는</text>
+      <text x="126" y="190" class="body">workflow dispatch</text>
+    </g>
+    <path d="M126 204v20" class="flow"/>
+    <g data-layer="integration">
+      <rect x="38" y="230" width="176" height="82" rx="12" class="node integration"/>
+      <text x="126" y="262" class="name">Exact SHA</text>
+      <text x="126" y="290" class="body">image · OCI rev</text>
+    </g>
+    <path d="M126 312v22" class="flow"/>
+    <g data-layer="runtime">
+      <rect x="38" y="340" width="176" height="92" rx="12" class="node runtime"/>
+      <text x="126" y="374" class="name">.deploy-next</text>
+      <text x="126" y="405" class="body">env · config</text>
+    </g>
+  </g>
+
+  <path d="M234 250h18" class="flow"/>
+
+  <g data-semantic="lane" aria-label="HTTPS 전환 경로">
+    <rect x="255" y="18" width="210" height="464" rx="16" class="lane-frame"/>
+    <text x="360" y="58" class="lane-name">HTTPS 전환</text>
+    <text x="360" y="90" class="lane-purpose">DNS · ACME · TLS</text>
+
+    <g data-layer="integration">
+      <rect x="275" y="110" width="170" height="94" rx="12" class="node integration"/>
+      <text x="360" y="148" class="name">DNS · port 80</text>
+      <text x="360" y="180" class="body">공개 선행조건</text>
+    </g>
+    <path d="M360 204v20" class="flow"/>
+    <g data-layer="resource">
+      <rect x="275" y="230" width="170" height="82" rx="12" class="node resource"/>
+      <text x="360" y="262" class="name">HTTP-01</text>
+      <text x="360" y="290" class="body">인증서 volume</text>
+    </g>
+    <path d="M360 312v22" class="flow"/>
+    <g data-layer="interface">
+      <rect x="275" y="340" width="170" height="92" rx="12" class="node interface"/>
+      <text x="360" y="374" class="name">Nginx :443</text>
+      <text x="360" y="405" class="body">TLS → :8080</text>
+    </g>
+  </g>
+
+  <path d="M465 250h18" class="flow"/>
+
+  <g data-semantic="lane" aria-label="Verify와 rollback 경로">
+    <rect x="486" y="18" width="216" height="464" rx="16" class="lane-frame"/>
+    <text x="594" y="58" class="lane-name">Verify · rollback</text>
+    <text x="594" y="90" class="lane-purpose">외부 검증 · 복구</text>
+
+    <g data-layer="runtime">
+      <rect x="506" y="110" width="176" height="94" rx="12" class="node runtime"/>
+      <text x="594" y="139" class="name">Image · SHA</text>
+      <text x="594" y="165" class="body">health</text>
+      <text x="594" y="190" class="body">OCI revision</text>
+    </g>
+    <path d="M594 204v20" class="flow"/>
+    <g data-layer="outside">
+      <rect x="506" y="230" width="176" height="82" rx="12" class="node outside"/>
+      <text x="594" y="262" class="name">외부 HTTPS</text>
+      <text x="594" y="290" class="body">TLS · 2xx</text>
+    </g>
+    <path d="M594 312v14" class="flow"/>
+    <g data-state="verified">
+      <rect x="506" y="332" width="176" height="50" rx="12" class="node resource"/>
+      <text x="594" y="365" class="name">2xx → 8080↓</text>
+    </g>
+    <path d="M676 312h12v127h-6" class="failure-flow"/>
+    <g data-state="failed">
+      <rect x="506" y="414" width="176" height="50" rx="12" class="node failure"/>
+      <text x="594" y="447" class="name failure-text">실패 · HTTP 복구</text>
+    </g>
+  </g>
+</svg>

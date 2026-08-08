@@ -1,247 +1,269 @@
-# Docker Runtime과 CI/CD 이론 정리
+# CI/CD와 HTTPS 운영 배포 이론
 
-로컬에서 실행되는 source는 그대로 배포 단위가 되지 않습니다.
-이번 랩은 검증된 source를 실행 가능한 JAR로 만들고, 같은 JAR를 담은 이미지를 Docker Hub를 통해 EC2까지 전달한 뒤 Nginx HTTPS 경계에서 실제 실행 결과를 확인합니다.
+로컬에서 실행되는 source 자체는 운영 배포 단위가 아닙니다.
+이번 랩은 `main`의 검증된 source를 실행 가능한 JAR로 만들고, 같은 JAR를 담은 불변 Docker 이미지를 Docker Hub를 통해 EC2에 전달한 뒤 HTTPS 경계에서 실행 증거를 확인합니다.
 
-<a id="seq-09"></a>
-
-## 09. 재현 가능한 실행 단위를 만듭니다
-
-`09-answer`는 `deploy-v1.0.3` HTTP 배포를 재현하는 불변 기준입니다.
-Spring Boot의 `8080`을 직접 공개하는 이 상태를 보존하고 HTTPS 변경은 `10-answer`에만 누적합니다.
+## 1. 재현 가능한 artifact를 만듭니다
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Source as Source
+    participant Source as main source
     participant Gradle as Gradle
     participant Jar as app.jar
     participant Docker as Docker builder
-    participant Runtime as app container
+    participant Hub as Docker Hub
 
     Source->>Gradle: clean test bootJar
     Gradle-->>Jar: build/libs/app.jar
-    Jar->>Docker: exact COPY + APP_VERSION
-    Docker-->>Runtime: tagged image + revision label
-    Runtime-->>Source: process and HTTP evidence
+    Jar->>Docker: exact COPY + full SHA
+    Docker-->>Hub: one exact SHA image
 ```
 
-| 단계 | 들어온 것 | 한 일 | 나간 것 또는 상태 |
+| 단계 | 입력 | 검증 또는 변환 | 출력 |
 | --- | --- | --- | --- |
-| 1 | source와 test | `clean test bootJar` 실행 | 검증된 `app.jar` |
-| 2 | `app.jar`와 Dockerfile | exact COPY와 revision label 기록 | tagged image |
-| 3 | image와 runtime `.env` | Compose로 app process 시작 | running 또는 기동 실패 |
-| 4 | 실행 중인 app | container와 HTTP 상태 확인 | runtime 성공 또는 첫 실패 경계 |
+| 1 | source와 test | `clean test bootJar` | 검증된 `app.jar` |
+| 2 | `app.jar`, Dockerfile, full SHA | exact COPY와 OCI label 기록 | 불변 image |
+| 3 | image와 Docker Hub 경로 | 기존 artifact 검증 또는 새 artifact 게시 | exact SHA image |
 
-### JAR 이름은 하나로 고정합니다
+### 실행 JAR 이름을 하나로 고정합니다
 
 Spring Boot 프로젝트는 executable JAR와 plain JAR가 함께 생길 수 있습니다.
-Dockerfile이 wildcard로 두 파일 중 하나를 우연히 고르면 build 결과를 재현하기 어렵습니다.
+Dockerfile이 wildcard로 둘 중 하나를 우연히 선택하면 같은 source에서도 다른 runtime artifact가 만들어질 수 있습니다.
 
-이 레포는 다음 계약을 사용합니다.
+이 저장소의 계약은 다음과 같습니다.
 
 - `bootJar` 결과는 `build/libs/app.jar`입니다.
 - plain `jar` task는 비활성화합니다.
 - Dockerfile은 `build/libs/app.jar`만 복사합니다.
 - `.dockerignore`는 다른 build 결과를 제외하되 `app.jar`는 context에 포함합니다.
 
-```text
-source -> test -> build/libs/app.jar -> Dockerfile COPY -> image
-```
+JAR가 없거나 이름이 바뀌면 image build가 즉시 실패하므로 잘못된 artifact가 다음 단계로 이동하지 않습니다.
 
-JAR 파일명이 바뀌거나 파일이 없으면 Docker build가 바로 실패하므로 잘못된 산출물이 다음 단계로 넘어가지 않습니다.
+### 이미지 안에 source revision을 기록합니다
 
-### image에는 source revision을 남깁니다
-
-Docker tag만으로는 컨테이너 안의 코드가 어느 commit에서 만들어졌는지 증명하기 어렵습니다.
-그래서 image build 시 `APP_VERSION`을 전달하고 OCI label에 기록합니다.
+Docker 이미지 경로만 보아서는 컨테이너 안의 코드가 어느 commit에서 만들어졌는지 충분히 증명할 수 없습니다.
+그래서 build 시 같은 full SHA를 두 argument로 전달합니다.
 
 ```dockerfile
 ARG APP_VERSION=local
+ARG APP_RELEASE=local
 LABEL org.opencontainers.image.revision="${APP_VERSION}"
-COPY build/libs/app.jar /app/app.jar
+LABEL org.opencontainers.image.version="${APP_RELEASE}"
 ```
 
-로컬에서는 `local`, GitHub Actions에서는 `${GITHUB_SHA}`가 revision이 됩니다.
-배포 검증은 tag뿐 아니라 이 label도 확인합니다.
+운영 build에서는 `APP_VERSION`과 `APP_RELEASE`가 모두 `GITHUB_SHA`입니다.
+`org.opencontainers.image.revision`은 실행 revision 검증의 기준입니다.
 
-### image와 runtime config의 책임은 다릅니다
+## 2. `main`은 유일한 운영 source입니다
 
-image에는 실행 코드와 Java runtime을 넣습니다.
-DB 비밀번호, JWT secret, OAuth client secret 같은 환경별 값은 image에 넣지 않고 Compose와 `.env`로 주입합니다.
+이 저장소는 여러 단계용 정답 브랜치를 겹쳐 관리하지 않습니다.
+독립 저장소의 `main`이 코드 검토와 운영 배포의 유일한 기준입니다.
 
-| 구분 | 저장할 것 | 저장하지 않을 것 |
+```mermaid
+flowchart LR
+    A[PR targeting main] --> B[CI: test and bootJar]
+    B --> C{PR merged}
+    C -->|yes| D[New commit on main]
+    D --> E[CD: publish deploy verify]
+    F[Manual workflow on main] --> E
+```
+
+PR 단계의 CI는 Docker Hub push나 EC2 접속을 하지 않습니다.
+운영 Secret 없이 source와 JAR 계약만 검증하므로 외부 기여자의 PR도 운영 자격 증명과 분리됩니다.
+
+CD는 다음 두 경로에서 시작됩니다.
+
+- `main`에 새 commit이 push된 경우
+- 사용자가 `workflow_dispatch`에서 `main`을 실행한 경우
+
+수동 실행은 최초 포크 배포나 현재 `main` 재배포에 사용합니다.
+첫 배포 이후 일반 변경은 PR 검증을 거쳐 `main`에 merge하면 자동으로 배포됩니다.
+
+### publish 전에 원격 `main`과 exact SHA를 맞춥니다
+
+workflow event에 SHA가 있다고 해서 그 revision이 현재 원격 `main`이라는 보장은 충분하지 않습니다.
+오래 대기한 실행이나 잘못 선택한 ref가 artifact를 게시하지 않도록 publish 전에 다음 gate를 둡니다.
+
+```text
+GITHUB_SHA matches ^[0-9a-f]{40}$
+GITHUB_SHA == fetched origin/main
+```
+
+둘 중 하나라도 실패하면 image build와 push가 열리지 않습니다.
+이 gate는 “어떤 source가 artifact를 만들 자격이 있는가”를 명확히 합니다.
+
+## 3. full SHA image 하나만 운영 artifact입니다
+
+운영 이미지 경로는 다음 형식입니다.
+
+```text
+docker.io/${DOCKERHUB_USERNAME}/aandi-cicd-deployment-lab:<full-sha>
+```
+
+콜론 뒤의 full SHA는 Docker 이미지 태그이며 Git 태그가 아닙니다.
+Git 이력을 따로 표시하는 이름을 만들지 않아도 commit SHA 자체로 source와 image를 연결할 수 있습니다.
+
+같은 image에 사람이 읽기 쉬운 별칭을 더하면 별칭이 가리키는 artifact가 바뀔 수 있습니다.
+이번 랩은 그 모호함을 없애기 위해 full SHA 이미지 하나만 게시하고 EC2도 그 경로만 pull합니다.
+
+### 기존 SHA image는 검증한 뒤 재사용합니다
+
+동일한 SHA의 workflow를 다시 실행했을 때 registry에 이미지가 이미 있을 수 있습니다.
+이 경우 workflow는 해당 경로를 덮어쓰지 않고 이미지를 pull한 뒤 다음 값을 확인합니다.
+
+```text
+org.opencontainers.image.revision == GITHUB_SHA
+```
+
+값이 다르면 registry의 이름과 artifact 내용이 충돌한 것이므로 배포를 중단합니다.
+값이 같을 때만 이미 검증된 artifact를 재사용합니다.
+이미지가 없을 때만 `APP_VERSION`과 `APP_RELEASE`를 같은 SHA로 build하고 정확히 한 경로를 push합니다.
+
+## 4. gate는 실패 이후 단계를 닫습니다
+
+```mermaid
+flowchart TD
+    A[main revision gate] --> B[test and bootJar]
+    B --> C[script and Nginx validation]
+    C --> D[exact SHA image publish]
+    D --> E[production settings validation]
+    E --> F[DNS validation]
+    F --> G[EC2 staging and deploy]
+    G --> H[internal verification]
+    H --> I[external HTTPS verification]
+
+    A -. fail .-> X[stop]
+    B -. fail .-> X
+    C -. fail .-> X
+    D -. fail .-> X
+    E -. fail .-> X
+    F -. fail .-> X
+    G -. fail .-> R[restore previous snapshot if available]
+    H -. fail .-> R
+    I -. fail .-> R
+```
+
+`publish -> deploy -> verify`는 앞 단계가 성공해야 다음 단계가 실행됩니다.
+운영 배포 concurrency도 한 번에 하나만 실행되므로 두 revision이 같은 EC2를 동시에 갱신하지 않습니다.
+
+성공은 workflow step이 끝났다는 사실만으로 정하지 않습니다.
+실제 runtime에서 다음 증거를 확인해야 합니다.
+
+- app, MySQL, Redis와 Nginx의 기대 상태
+- Certbot process 상태
+- app container의 image reference와 image ID
+- image의 OCI revision
+- HTTPS readiness 응답
+- HTTP에서 같은 도메인의 HTTPS URL로 이동하는 응답
+
+## 5. image와 runtime config의 책임을 분리합니다
+
+image에는 실행 코드와 Java runtime만 넣습니다.
+DB 비밀번호, JWT secret, OAuth secret 같은 환경별 값은 image에 포함하지 않습니다.
+
+| 경계 | 저장할 것 | 저장하지 않을 것 |
 | --- | --- | --- |
-| Docker image | `app.jar`, Java runtime, ENTRYPOINT, revision label | 운영 비밀번호와 token |
-| Compose | service 관계, port, environment 변수 이름 | 실제 secret 값 |
-| GitHub `production` Environment | 운영 DB, JWT, OAuth, Mail 값과 10의 도메인·인증서 연락처 | source와 JAR |
-| EC2 `.env` | Actions가 전달한 현재 runtime 값 | source, JAR, GitHub token |
+| Docker image | `app.jar`, Java runtime, entrypoint, revision label | 운영 비밀번호와 token |
+| Compose | service 관계, port, 환경변수 이름 | 실제 secret 값 |
+| Repository Secrets | Docker Hub와 EC2 접속 정보 | 애플리케이션 runtime source |
+| `production` Environment | DB, JWT, Mail, OAuth, 도메인, 인증서 연락처 | source와 JAR |
+| EC2 `.env` | 현재 runtime 값과 exact image 경로 | GitHub token, source, JAR |
 
-Actions는 개별 Secret과 Variable을 로그에 출력하지 않고 runtime `.env`로 조립합니다.
-검증된 파일만 EC2의 `.env.next`로 전송하고 권한을 `600`으로 제한한 뒤 기존 `.env`와 원자적으로 교체합니다.
+Actions는 production 값을 로그에 출력하지 않고 runtime `.env`로 조립합니다.
+검증된 파일만 EC2로 전송하고 권한을 `600`으로 제한합니다.
 
-[main Visual Lab에서 runtime 경계를 확인하기](https://github.com/stdiodh/spring-boot-deployment-runtime-lab/tree/main/docs/visual-lab/sequences/09)
+### 포크는 설정과 인프라 소유권을 상속하지 않습니다
 
-<a id="seq-10"></a>
+GitHub는 보안을 위해 원본 저장소의 Secret을 포크에 복사하지 않습니다.
+`production` Environment의 Secret·Variable도 새 포크에 자동으로 생기지 않습니다.
+포크의 Actions 실행도 최초에 사용자가 허용해야 할 수 있습니다.
 
-## 10. 같은 image를 HTTPS 경계까지 배포합니다
+따라서 포크 소유자는 다음 경계를 모두 직접 소유해야 합니다.
 
-EC2에서 JAR를 받아 image를 다시 만들면 Actions가 검증한 결과와 서버가 실행한 결과 사이에 새 build가 생깁니다.
-이번 랩은 Actions가 image를 한 번만 만들고 Docker Hub가 그 image를 전달하며, Nginx와 Certbot이 공개 HTTPS 경계를 담당하도록 책임을 나눕니다.
+- Docker Hub 계정과 `aandi-cicd-deployment-lab` 저장소
+- EC2 인스턴스와 SSH key
+- DNS를 변경할 수 있는 운영 도메인
+- Repository Secrets
+- `production` Environment의 Secrets와 Variables
+
+원본 저장소 소유자의 Docker Hub, EC2 또는 도메인을 입력하면 타인의 운영 환경을 변경할 수 있으므로 사용하지 않습니다.
+
+## 6. HTTPS runtime 경계를 만듭니다
+
+EC2에서 JAR를 받아 image를 다시 만들면 Actions가 검증한 artifact와 서버가 실행한 artifact 사이에 새 build가 생깁니다.
+이번 랩은 Actions에서 image를 한 번만 만들고, EC2에서는 exact SHA image를 pull해 실행합니다.
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Git as Git revision
-    participant CI as GitHub Actions
+    participant Actions as GitHub Actions
     participant Hub as Docker Hub
     participant EC2 as EC2
-    participant Proxy as Nginx + Certbot
+    participant Proxy as Nginx and Certbot
     participant Stack as Compose stack
 
-    Git->>CI: deploy-https-vX.Y.Z tag on 10-answer commit
-    CI->>CI: test + bootJar
-    CI->>CI: image build with revision label
-    CI->>Hub: push :commit-SHA and :deploy-https-vX.Y.Z
-    CI->>CI: DNS 검증 + production 설정 -> runtime.env
-    CI->>EC2: .env.next + Compose + Nginx templates + scripts
-    EC2->>Stack: keep/start MySQL and Redis
-    EC2->>Proxy: HTTP challenge -> TLS certificate
-    Hub->>EC2: pull exact :commit-SHA
-    EC2->>Stack: update app with exact SHA + proxy services
-    Proxy->>Stack: HTTPS reverse proxy to app:8080
-    Stack-->>CI: health + image + HTTPS readiness + redirect
+    Actions->>Hub: publish or verify exact SHA image
+    Actions->>Actions: production config and DNS gate
+    Actions->>EC2: staging bundle and runtime env
+    EC2->>Stack: preserve or start MySQL and Redis
+    Hub->>EC2: pull exact SHA image
+    EC2->>Proxy: certificate bootstrap if needed
+    EC2->>Stack: update app and HTTPS services
+    Proxy->>Stack: reverse proxy to app 8080
+    Stack-->>Actions: runtime and HTTPS evidence
 ```
 
-| 단계 | 들어온 것 | 한 일 | 나간 것 또는 상태 |
-| --- | --- | --- | --- |
-| 1 | source와 commit SHA | test, `bootJar`, image build | 검증된 SHA image |
-| 2 | SHA image | Docker Hub에 SHA와 배포 tag push | registry 배포 입력 |
-| 3 | SHA tag, 도메인과 production runtime | DNS 확인, 인증서 bootstrap, exact pull, Compose 기동 | HTTPS runtime stack |
-| 4 | 실행 중인 stack | health, image, revision, HTTPS readiness와 redirect 검증 | workflow 성공 또는 실패 |
+10은 기존 HTTPS runtime의 DB와 인증서를 이어받기 위해 `aandi-*` 자원 이름을 유지합니다.
+09가 별도 `aandi-runtime-*` namespace를 사용하므로 두 저장소는 같은 EC2에서도 충돌하지 않습니다.
 
-### SHA tag가 배포 버전입니다
-
-workflow는 annotated tag가 가리키는 commit을 40자리 release SHA로 해석합니다.
-Actions는 같은 image에 두 tag를 게시합니다.
-
-| tag | 용도 |
+| 종류 | 계약 |
 | --- | --- |
-| tag 대상 commit SHA | 실제 배포와 검증에 사용하는 불변 식별자 |
-| `deploy-https-vX.Y.Z` | 사람이 HTTPS 배포 이력을 찾는 불변 release 별칭 |
+| release directory | `/home/<EC2_USERNAME>/aandi-cicd-deployment-lab` |
+| Compose project | `aandi-production` |
+| containers | `aandi-app`, `aandi-nginx`, `aandi-certbot`, `aandi-mysql`, `aandi-redis` |
+| volumes | `aandi-mysql-data`, `aandi-certbot-www`, `aandi-letsencrypt` |
 
-배포 tag는 이미 원격에 게시한 뒤 이동하거나 재사용하지 않습니다.
-EC2 배포 입력은 항상 40자리 commit SHA image입니다.
-이미 게시된 SHA image는 revision label을 확인해 재사용하고 workflow에서 덮어쓰지 않습니다.
-배포 script는 SHA tag를 정확히 pull하고, verify job은 컨테이너의 image reference, revision label과 HTTPS readiness 응답을 확인합니다.
+app은 host port를 열지 않고 Compose network의 `8080`에서만 요청을 받습니다.
+Nginx만 host의 `80`, `443`을 사용합니다.
+MySQL `3306`과 Redis `6379`도 외부에 공개하지 않습니다.
 
-### gate는 실패 이후 단계를 닫습니다
+### DNS는 인증서와 외부 검증의 입력입니다
 
-```text
-test + bootJar
-  -> image publish
-  -> EC2 deploy
-  -> runtime verify
-```
+인증서 발급 서버와 GitHub runner는 공개 DNS를 통해 EC2에 접근합니다.
+그래서 운영 도메인의 모든 A 레코드가 `EC2_HOST`와 같은 public IPv4를 가리켜야 합니다.
+AAAA 레코드가 남아 있으면 일부 요청이 준비되지 않은 IPv6 주소로 갈 수 있으므로 허용하지 않습니다.
 
-- test 또는 `bootJar`가 실패하면 image를 게시하지 않습니다.
-- image 게시가 실패하면 SSH 배포를 시작하지 않습니다.
-- deploy가 실패하면 verify를 시작하지 않습니다.
-- image, 인증서 또는 HTTPS 검증이 실패하면 workflow 전체를 성공으로 판정하지 않습니다.
+인증서가 없거나 손상되었거나 24시간 안에 만료되면 HTTP challenge용 Nginx를 먼저 실행합니다.
+Certbot이 인증서를 준비한 뒤 HTTPS template로 전환하며, 일반 HTTP 요청은 HTTPS로 이동합니다.
 
-`needs`는 job 순서를 고정하고, deployment concurrency는 두 운영 배포가 동시에 EC2를 바꾸지 못하게 합니다.
+## 7. rollback은 snapshot 복구와 이력 복구로 나뉩니다
 
-### 첫 배포는 HTTPS 경계를 만들고 이후에는 필요한 서비스만 갱신합니다
+배포 script는 새 bundle을 staging 영역에서 검증합니다.
+현재 배포가 있다면 Compose·Nginx template·script, `.env`와 image 정보를 직전 snapshot으로 보존한 뒤 새 파일을 설치합니다.
+배포 또는 검증이 실패하면 workflow는 이 snapshot을 이용해 이전 runtime과 readiness를 복구합니다.
 
-MySQL과 Redis는 장기 상태 서비스이고 app은 commit마다 교체되는 배포 서비스입니다.
-10의 배포는 전체 Compose stack을 내리지 않습니다.
+그러나 최초 배포에는 직전 snapshot이 없습니다.
+따라서 최초 실행이 중간에 실패하면 자동 복구가 불가능할 수 있습니다.
+이 경우 로그의 첫 실패 원인을 고친 뒤 현재 `main`을 다시 실행합니다.
 
-```text
-docker compose up -d --no-recreate mysql redis
-certificate check -> HTTP challenge Nginx -> Certbot when needed
-docker compose pull app
-docker compose up -d --no-deps --force-recreate app nginx
-docker compose up -d --no-deps certbot
-```
+이미 운영에 반영된 잘못된 변경을 이력에서 되돌릴 때는 문제 commit을 지우거나 이동하지 않습니다.
+`git revert <bad-sha>`가 만드는 새 commit을 `main`에 push하면 새 SHA image가 만들어지고 정상 CD 흐름으로 배포됩니다.
 
-실제 script는 Compose가 SHA image를 해석하도록 값을 export한 뒤 상태 서비스는 보존하고 공개 경계만 갱신합니다.
+이 방식은 “현재 운영 상태가 왜 바뀌었는가”를 Git 이력과 Docker image SHA로 함께 추적할 수 있게 합니다.
 
-```bash
-export APP_IMAGE
-docker compose --env-file .env -f deploy/compose.prod.yaml up -d --no-recreate mysql redis
-# 인증서가 usable하지 않을 때 HTTP challenge Nginx와 Certbot을 먼저 실행합니다.
-docker compose --env-file .env -f deploy/compose.prod.yaml pull app
-docker compose --env-file .env -f deploy/compose.prod.yaml up -d --no-deps --force-recreate app
-docker compose --env-file .env -f deploy/compose.prod.yaml up -d --no-deps --force-recreate nginx
-docker compose --env-file .env -f deploy/compose.prod.yaml up -d --no-deps certbot
-```
+## 8. 이번 랩의 책임 경계
 
-기존 MySQL과 Redis container가 있으면 다시 만들지 않고, 없거나 멈춘 서비스는 기동합니다.
-그 뒤 새 app image와 공개 경계만 갱신하므로 MySQL volume과 기존 데이터는 유지됩니다.
-첫 배포에서는 workflow가 `.env`를 전달하므로 EC2에 runtime 값을 미리 작성할 필요가 없습니다.
-MySQL, Redis와 app은 Compose 내부 network에서 연결하므로 host의 `3306`, `6379`, `8080`을 공개하지 않습니다.
+이번 랩이 직접 다루는 범위는 다음과 같습니다.
 
-### HTTP bootstrap 뒤 HTTPS로 전환합니다
+- `main` 대상 PR CI
+- `main` push 자동 CD와 `workflow_dispatch`
+- exact SHA image 게시와 OCI revision 검증
+- GitHub 설정에서 runtime `.env` 생성
+- DNS gate, Nginx, Certbot HTTPS 경계
+- EC2 staging, 배포, 실행 증거 확인과 가능한 자동 복구
+- revert commit을 통한 수동 복구
 
-Compose는 `nginx:1.28.3-alpine`과 `certbot/certbot:v5.7.0`을 고정해서 사용합니다.
-인증서가 없거나 24시간 안에 만료되거나 정상 PEM이 아니면 Nginx를 HTTP challenge template로 먼저 띄우고 Certbot webroot 방식으로 발급 또는 갱신합니다.
-발급 뒤 Nginx를 HTTPS template로 다시 만들며 `80` 요청은 `443`으로 이동하고 `443` 요청은 `app:8080`으로 전달됩니다.
+무중단 다중 인스턴스 배포, managed database, private registry 인증, secret manager, blue-green routing과 관측성 플랫폼은 후속 운영 범위입니다.
 
-Certbot은 12시간마다 인증서 갱신을 시도하고 Nginx는 6시간마다 reload하여 갱신된 인증서를 반영합니다.
-Nginx는 `X-Forwarded-*`와 WebSocket의 `Upgrade`, `Connection` header를 전달합니다.
-Spring Boot는 forwarded header를 해석하므로 프록시 뒤에서도 원래 HTTPS 요청 정보를 사용합니다.
-
-### 성공 판정에는 실행 증거가 필요합니다
-
-배포 명령이 종료됐다는 사실과 서비스가 정상이라는 사실은 다릅니다.
-workflow의 verify job은 다음 순서로 확인합니다.
-
-1. 선언된 image reference가 요청한 SHA tag인지 확인합니다.
-2. OCI revision label이 `${GITHUB_SHA}`와 같은지 확인합니다.
-3. MySQL, Redis, Nginx가 healthy이고 Certbot이 running인지 확인합니다.
-4. 제한된 횟수 안에 `https://<APP_DOMAIN>/actuator/health/readiness` 응답이 오는지 확인합니다.
-5. `http://<APP_DOMAIN>/` 요청이 같은 도메인의 HTTPS URL로 이동하는지 확인합니다.
-
-내부 검증이나 GitHub runner의 외부 HTTPS readiness가 실패하면 이전 bundle, runtime 환경과 image를 복원하고 이전 HTTP 또는 HTTPS readiness를 다시 확인합니다. 시도한 workflow는 rollback 성공 여부와 무관하게 실패로 남습니다.
-이후 이력상 rollback 배포가 필요하면 HTTPS workflow가 있는 정상 commit에 새로운 `deploy-https-vX.Y.Z` tag를 만들어 같은 gate를 다시 통과시킵니다.
-
-### secret은 사용 위치에 따라 나눕니다
-
-| 위치 | 값 | 이유 |
-| --- | --- | --- |
-| Repository Secrets | Docker Hub 계정/token, EC2 host/user/key | image 게시와 원격 접속에 필요 |
-| `production` Secrets | DB, JWT, Mail, Google client secret | 민감한 runtime 값 |
-| `production` Variables | DB 사용자/이름, Google client ID, `PROD_DOMAIN`, `PROD_CERTBOT_EMAIL`, 공개 URL | 민감하지 않은 runtime 값 |
-| EC2 `.env` | Actions가 위 값을 Compose 입력으로 조립한 결과 | 실행 중인 container에 주입 |
-
-Secret은 workflow 명령문에 직접 넣지 않고 step 환경변수로 전달합니다.
-Actions는 필수값과 dotenv 형식을 확인하고, 값 자체를 출력하지 않은 채 `.env.next`를 전송합니다.
-EC2에서 Compose 설정이 유효할 때만 기존 `.env`를 백업하고 교체합니다.
-publish job은 두 Nginx template을 실제 `nginx -t`로 검사합니다. EC2 staging은 필수 파일, shell 문법과 Compose 설정을 확인하고, 완성된 이전 bundle snapshot을 보존해 application과 ingress를 같은 기준으로 rollback합니다.
-
-### production trigger는 10-answer의 배포 tag입니다
-
-`main`은 가이드 브랜치이고 `09-answer`는 `deploy-v1.0.3` HTTP 기준, 실제 HTTPS 실행 기준은 `10-answer`입니다.
-HTTPS 전용 `deploy-https-vX.Y.Z` 형식은 09의 구 HTTP tag workflow와 실행 경로를 분리합니다.
-문서나 일반 commit push만으로 EC2가 바뀌지 않으며, 규칙에 맞는 annotated deploy tag를 push해야 배포가 시작됩니다.
-workflow는 tag commit이 `origin/10-answer`에 포함되는지도 publish 전에 확인합니다.
-
-## 09와 10 연결
-
-`09-answer`에서 다음 HTTP runtime 계약을 확인합니다.
-
-- `build/libs/app.jar` 생성 계약
-- Dockerfile과 `.dockerignore`
-- `application-prod.yaml`
-- `deploy/compose.prod.yaml`
-- GitHub `production` Secret/Variable 계약
-- Docker와 Docker Compose가 설치된 EC2
-
-`10-answer`는 이 기준 위에 Nginx, Certbot, 도메인 DNS, forwarded/WebSocket header, HTTPS readiness와 tag rollback을 추가합니다.
-
-## 남은 범위
-
-이번 랩은 공개 Docker Hub 저장소, 단일 EC2, Docker Compose를 기준으로 합니다.
-private registry 인증, Blue-Green, Canary, Kubernetes, Terraform, observability와 알림은 후속 운영 주제입니다.
-
-[main Visual Lab에서 CI/CD gate를 확인하기](https://github.com/stdiodh/spring-boot-deployment-runtime-lab/tree/main/docs/visual-lab/sequences/10)
+[Visual Lab에서 전체 경계 확인하기](./visual-lab/index.html)
