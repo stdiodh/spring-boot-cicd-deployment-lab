@@ -22,7 +22,7 @@ sequenceDiagram
     Docker-->>Hub: one exact SHA image
 ```
 
-| 단계 | 입력 | 검증 또는 변환 | 출력 |
+| 단계 | 들어온 것 | 한 일 | 나간 것 또는 상태 |
 | --- | --- | --- | --- |
 | 1 | source와 test | `clean test bootJar` | 검증된 `app.jar` |
 | 2 | `app.jar`, Dockerfile, full SHA | exact COPY와 OCI label 기록 | 불변 image |
@@ -268,4 +268,4 @@ Certbot이 인증서를 준비한 뒤 HTTPS template로 전환하며, 일반 HTT
 
 무중단 다중 인스턴스 배포, managed database, private registry 인증, secret manager, blue-green routing과 관측성 플랫폼은 후속 운영 범위입니다.
 
-[Visual Lab에서 전체 경계 확인하기](./visual-lab/index.html)
+[Visual Lab에서 HTTPS 배포 경로 예측하기](./visual-lab/sequences/10/)
